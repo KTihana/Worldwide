@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import {geoEqualEarth, geoPath, geoGraticule10} from 'd3-geo';
 const raw=JSON.parse(fs.readFileSync(new URL('./countries-source.geojson',import.meta.url)));
-const features=raw.features.filter(f=>f.properties.ADMIN!=='Antarctica');
+const features=raw.features;
 const projection=geoEqualEarth().fitExtent([[24,14],[1176,565]], {type:'FeatureCollection',features});
 const path=geoPath(projection).digits(2);
 const countries=features.map(f=>{

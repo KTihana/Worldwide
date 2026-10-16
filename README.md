@@ -5,7 +5,9 @@ A private travel atlas with an interactive vector world map, visited countries, 
 ## Features
 
 - Full-screen vector map with country search and visited filters
-- 241 countries and territories, searchable by name
+- Seven isolated continent views with automatic zoom
+- Country close-ups that fit the outline and cover photo beside its album
+- 242 countries, territories, and destinations, searchable by name
 - Mark a country as visited without uploading photos
 - Multiple photos in each country album; select any photo as its map cover
 - Full photo viewer with captions, download, and removal
@@ -39,6 +41,6 @@ The API smoke test runs only on a loopback preview, creates and removes its own 
 
 ## Geography
 
-Country paths are generated from Natural Earth's public-domain 1:50m Admin 0 dataset using an Equal Earth projection. Run `node scripts/generate-map.mjs` to regenerate them. Country and territory boundaries follow the source dataset and include separately mapped disputed areas.
+Country paths are generated from Natural Earth's public-domain 1:50m Admin 0 dataset using an Equal Earth projection. Run `node scripts/generate-map.mjs` and `node scripts/generate-focus.mjs` to regenerate world, continent, and country close-up paths. Country and territory boundaries follow the source dataset and include separately mapped disputed areas.
 
 Source: https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_50m_admin_0_countries.geojson
