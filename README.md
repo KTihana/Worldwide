@@ -4,13 +4,14 @@ A private travel atlas with an interactive vector world map, visited countries, 
 
 ## Features
 
-- 241 countries and territories, searchable by name and continent
+- Full-screen vector map with country search and visited filters
+- 241 countries and territories, searchable by name
 - Mark a country as visited without uploading photos
 - Multiple photos in each country album; select any photo as its map cover
 - Full photo viewer with captions, download, and removal
 - Optional visit date and travel notes
 - Zoomable, pannable SVG map; visited and unvisited filters
-- Responsive layouts, keyboard-accessible country finder and modal dialogs
+- Responsive floating controls, keyboard-accessible country search, and compact country panels
 - Account-scoped records in Cloudflare D1 and private photos in R2
 
 Sign-in and the private site audience are managed by Sites. All API operations authorize the authenticated account. Photos are resized to a maximum of 2,400 pixels and saved as WebP on upload; originals are not retained.
