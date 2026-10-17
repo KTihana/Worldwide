@@ -1,4 +1,4 @@
-import {context,errorResponse,ApiError,countryIds} from '../../shared';
+import {context,errorResponse,ApiError,countryIds} from '../../shared.ts';
 export async function PATCH(request:Request,{params}:{params:Promise<{id:string}>}){try{
  const {id}=await params;const {userId,db}=context(request);
  if(!countryIds.has(id))throw new ApiError('Country not found.',404);

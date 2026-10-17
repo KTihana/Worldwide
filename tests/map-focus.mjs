@@ -4,7 +4,7 @@ import {fitShape} from '../app/map-camera.ts';
 const world=JSON.parse(fs.readFileSync(new URL('../app/data/world.json',import.meta.url)));
 const focus=JSON.parse(fs.readFileSync(new URL('../app/data/focus.json',import.meta.url)));
 assert.equal(Object.keys(focus.regions).length,7,'Every continent is available');
-for(const c of world.countries){const detail=focus.details[c.id];assert.ok(detail?.path,`${c.name}: close-up exists`);assert.ok(detail.bounds.every(Number.isFinite),`${c.name}: finite bounds`);assert.ok(detail.bounds[2]>detail.bounds[0]&&detail.bounds[3]>detail.bounds[1],`${c.name}: visible outline`)}
+for(const c of world.countries){const detail=focus.details[c.id];assert.ok(detail.outline&&!/[Zz]/.test(detail.outline),`${c.name}: border contains only real open geographic edges`);assert.ok(detail?.path,`${c.name}: close-up exists`);assert.ok(detail.bounds.every(Number.isFinite),`${c.name}: finite bounds`);assert.ok(detail.bounds[2]>detail.bounds[0]&&detail.bounds[3]>detail.bounds[1],`${c.name}: visible outline`)}
 assert.ok(focus.regions.Europe.shapes.HRV,'Croatia is shown in Europe');
 assert.ok(!focus.regions.Europe.shapes.BRA,'Brazil is hidden in Europe');
 assert.ok(focus.regions.Asia.shapes.RUS&&focus.regions.Europe.shapes.RUS,'Russia can be viewed from both continents');
@@ -17,7 +17,7 @@ function assertFits(bounds,box,screen,country=false){
  assert.ok(top>=(screen.width<=600?134:100),'Outline clears the controls');
  if(country&&screen.width>600)assert.ok(right<screen.width-(screen.width<=800?380:412),'Outline clears the desktop album');
  if(country&&screen.width<=600)assert.ok(bottom<screen.height*.48-16,'Outline clears the mobile album');
- else assert.ok(bottom<screen.height-42,'Outline clears the map footer');
+ else assert.ok(bottom<screen.height-(country?76:42),'Outline clears the map footer and country zoom controls');
 }
 for(const c of world.countries){
  assertFits(focus.details[c.id].bounds,{x:0,y:-42.5,width:1200,height:675},{width:1280,height:720},true);
@@ -26,3 +26,14 @@ for(const c of world.countries){
 }
 for(const r of Object.values(focus.regions)){assertFits(r.bounds,{x:0,y:-42.5,width:1200,height:675},{width:1280,height:720});assertFits(r.bounds,{x:443,y:-45,width:314,height:680},{width:390,height:844})}
 console.log('PASS: seven continent filters, all country outlines, date-line wrapping, and close-up framing on desktop and mobile.');
+
+for(const region of Object.values(focus.regions))for(const shape of Object.values(region.shapes))assert.ok(shape.outline&&!/[Zz]/.test(shape.outline),'Clipped continent borders stay open at the view edge');
+
+for(const c of world.countries){
+ const screen={width:844,height:390},box={x:0,y:17.75,width:1200,height:554.5},z=fitShape(focus.details[c.id].bounds,box,screen,true),b=focus.details[c.id].bounds;
+ assert.ok((b[0]*z.k+z.x-box.x)/box.width*screen.width>=18);
+ assert.ok((b[2]*z.k+z.x-box.x)/box.width*screen.width<=screen.width-336,'Landscape country clears inset side album');
+ assert.ok((b[1]*z.k+z.y-box.y)/box.height*screen.height>=76,'Landscape country clears compact toolbar');
+ assert.ok((b[3]*z.k+z.y-box.y)/box.height*screen.height<=screen.height-76,'Landscape country clears horizontal zoom controls');
+}
+console.log('PASS: landscape phone framing leaves room for the side album.');

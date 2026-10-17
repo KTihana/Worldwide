@@ -1,0 +1,13 @@
+module.exports={
+ appId:'app.worldwide.desktop',productName:'Worldwide',
+ directories:{output:'releases/desktop'},
+ files:['desktop/main.cjs','package.json'],
+ extraResources:[{from:'desktop-runtime',to:'runtime'}],
+ asar:true,npmRebuild:false,
+ mac:{target:['zip','dmg'],category:'public.app-category.travel',identity:null,icon:'public/icon-512.png'},
+ win:{target:[{target:'nsis',arch:['x64']},{target:'portable',arch:['x64']}],signExecutable:false,icon:'public/icon-512.png'},
+ nsis:{oneClick:false,allowToChangeInstallationDirectory:true,createDesktopShortcut:true,deleteAppDataOnUninstall:false,artifactName:'Worldwide-Setup-${version}-${arch}.${ext}'},
+ portable:{artifactName:'Worldwide-Portable-${version}-${arch}.${ext}'},
+ artifactName:'Worldwide-${version}-${os}-${arch}.${ext}',
+ publish:null,
+};

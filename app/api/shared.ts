@@ -1,20 +1,7 @@
-import { env } from 'cloudflare:workers';
-import countries from '../data/countries.json';
+import {db,bucket} from '../../server/storage.ts';
+import countries from '../data/countries.json' with {type:'json'};
 export const countryIds=new Set(countries.map(c=>c.id));
-export function context(request:Request){
- const userId=request.headers.get('oai-authenticated-user-id');
- if(!userId) throw new ApiError('Please sign in to save your travel memories.',401);
- if(!env.DB||!env.BUCKET) throw new ApiError('Your album storage is not ready. Please try again shortly.',503);
- if(!['GET','HEAD'].includes(request.method)){
-  const origin=request.headers.get('origin');
-  if(origin&&origin!==new URL(request.url).origin) throw new ApiError('This request is not allowed.',403);
- }
- return {userId,db:env.DB,bucket:env.BUCKET};
-}
-export class ApiError extends Error{constructor(message:string,public status=400){super(message)}}
-export function errorResponse(error:unknown){
- if(error instanceof ApiError)return Response.json({error:error.message},{status:error.status});
- console.error('Album request failed',error);
- return Response.json({error:'We couldn’t save that change. Please try again.'},{status:500});
-}
+import {requireAccount} from '../../server/auth.ts';
+export {ApiError,errorResponse} from '../../server/errors.ts';
+export function context(request:Request){return {userId:requireAccount(request),db,bucket}}
 export const privateHeaders={'Cache-Control':'private, no-store'};

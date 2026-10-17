@@ -1,9 +1,11 @@
 export type MapBox={x:number;y:number;width:number;height:number};
 export type Camera={k:number;x:number;y:number};
 export function fitShape(bounds:number[],box:MapBox,screen:{width:number;height:number},country=false):Camera{
- const mobile=screen.width<=600;
- const left=24,right=country&&!mobile?screen.width-(screen.width<=800?380:412):screen.width-24;
- const top=mobile?134:screen.width<=1000?136:100,bottom=country&&mobile?screen.height*.48-16:screen.height-42;
+ const landscape=screen.width>screen.height&&screen.height<=600&&screen.width<=1100;
+ const mobile=!landscape&&screen.width<=600;
+ const left=24,right=country&&!mobile?screen.width-(landscape?336:screen.width<=800?380:412):screen.width-24;
+ const top=landscape?(country?76:screen.width<=900?120:76):mobile?144:screen.width<=1100?144:100;
+ const bottom=country&&mobile?screen.height*.48-16:screen.height-(country?76:42);
  const width=Math.max(48,right-left)/screen.width*box.width;
  const height=Math.max(48,bottom-top)/screen.height*box.height;
  const [x1,y1,x2,y2]=bounds;

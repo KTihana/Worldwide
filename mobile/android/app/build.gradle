@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'app.worldwide'
+    compileSdk 36
+    buildFeatures { buildConfig true }
+    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 1; versionName '1.0.0'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    signingConfigs {
+        release {
+            if (System.getenv('WORLDWIDE_ANDROID_KEYSTORE')) {
+                storeFile file(System.getenv('WORLDWIDE_ANDROID_KEYSTORE'))
+                storePassword System.getenv('WORLDWIDE_ANDROID_KEY_PASSWORD')
+                keyAlias 'worldwide'
+                keyPassword System.getenv('WORLDWIDE_ANDROID_KEY_PASSWORD')
+                storeType 'PKCS12'
+            }
+        }
+    }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.release } }
+}

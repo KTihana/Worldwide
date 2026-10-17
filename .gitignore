@@ -54,3 +54,20 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+
+# Local albums and uploaded photos
+/data/
+
+# Native app build output
+/desktop-runtime/
+/releases/
+
+# Private credentials and local databases
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

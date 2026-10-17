@@ -1,4 +1,4 @@
-import {context,errorResponse,ApiError} from '../../shared';
+import {context,errorResponse,ApiError} from '../../shared.ts';
 type Params={params:Promise<{id:string}>};
 export async function GET(request:Request,{params}:Params){try{
  const {id}=await params;const {userId,db,bucket}=context(request);
@@ -8,9 +8,12 @@ export async function GET(request:Request,{params}:Params){try{
  return new Response(object.body,{headers:{'Content-Type':photo.content_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 }catch(e){return errorResponse(e)}}
 export async function PATCH(request:Request,{params}:Params){try{
- const {id}=await params;const {userId,db}=context(request);const {caption}=await request.json() as {caption:unknown};
- if(typeof caption!=='string'||caption.length>500)throw new ApiError('Keep captions under 500 characters.');
- const result=await db.prepare('UPDATE photos SET caption=? WHERE id=? AND user_id=?').bind(caption,id,userId).run();
+ const {id}=await params;const {userId,db}=context(request);const body=await request.json() as Record<string,unknown>;
+ if(body.caption!==undefined&&(typeof body.caption!=='string'||body.caption.length>500))throw new ApiError('Keep captions under 500 characters.');
+ for(const key of ['cropX','cropY','cropZoom'])if(body[key]!==undefined&&(typeof body[key]!=='number'||!Number.isFinite(body[key])||(body[key] as number)<(key==='cropZoom'?1:-1)||(body[key] as number)>(key==='cropZoom'?5:1)))throw new ApiError('Invalid photo position.');
+ const columns:Record<string,string>={caption:'caption',cropX:'crop_x',cropY:'crop_y',cropZoom:'crop_zoom'},fields=Object.keys(columns).filter(k=>Object.hasOwn(body,k));
+ if(!fields.length)throw new ApiError('No photo changes supplied.');
+ const result=await db.prepare(`UPDATE photos SET ${fields.map(k=>columns[k]+'=?').join(',')} WHERE id=? AND user_id=?`).bind(...fields.map(k=>body[k]),id,userId).run();
  if(!result.meta.changes)throw new ApiError('Photo not found.',404);
  return Response.json({ok:true});
 }catch(e){return errorResponse(e)}}
