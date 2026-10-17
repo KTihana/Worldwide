@@ -54,11 +54,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 
 /* Every map dock shares the same screen inset, including phone safe areas. */
 .map-app{position:fixed;inset:0;overflow:hidden}
-.map-canvas{position:absolute;inset:0;background:var(--water);}
+.map-canvas{position:absolute;inset:0;background:var(--water);view-transition-name:map-canvas}
 .world-map{width:100%;height:100%;display:block;touch-action:none;user-select:none;cursor:grab;-webkit-tap-highlight-color:transparent}
 .world-map:active{cursor:grabbing}
 .search-dock{position:absolute;top:var(--top);left:var(--left);z-index:25;width:280px;max-width:calc(100vw - var(--left) - var(--right))}
-.search-field{height:var(--control);display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);;color:#71877b}
+.search-field{height:var(--control);display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(14px);color:#71877b}
 .search-field:focus-within{border-color:#8ba892;box-shadow:0 0 0 3px #739a8317,var(--shadow)}
 .search-field input{width:100%;min-width:0;background:none;border:0;font-size:13px;color:var(--ink);padding:12px 0}
 .search-field input:focus-visible{outline:0}
@@ -77,12 +77,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .search-visit-check input[aria-busy=true],.visit-toggle input[aria-busy=true]{cursor:progress;opacity:.65}
 .search-results p{padding:20px 12px;color:var(--muted);font-size:12px}
 .top-controls{position:absolute;top:var(--top);right:var(--right);z-index:20;display:flex;gap:var(--gap);align-items:center}
-.map-filters{height:var(--control);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:3px;display:flex;gap:2px;box-shadow:var(--shadow);}
+.map-filters{height:var(--control);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:3px;display:flex;gap:2px;box-shadow:var(--shadow);backdrop-filter:blur(14px)}
 .map-filters button{min-height:40px;padding:0 14px;font-size:12px;color:var(--muted);border-radius:9px;white-space:nowrap}
 .map-filters button:hover{background:#f0f4ee;color:#55715a}
 .map-filters button.active{background:#e7efe3;color:#395e46;font-weight:600}
 .region-dock{position:absolute;top:var(--top);left:50%;transform:translateX(-50%);z-index:20}
-.region-selector,.back-region{display:flex;align-items:center;gap:8px;min-height:var(--control);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);;padding:0 14px;color:#5c7966;font-size:12px}
+.region-selector,.back-region{display:flex;align-items:center;gap:8px;min-height:var(--control);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(14px);padding:0 14px;color:#5c7966;font-size:12px}
 .region-selector select{appearance:none;border:0;background:none;color:inherit;font:inherit;cursor:pointer;outline:0;min-width:60px;max-width:125px;padding:12px 2px;text-overflow:ellipsis}
 .region-selector:focus-within{outline:2px solid #739a83;outline-offset:3px}
 .region-selector select:focus-visible{outline:0}
@@ -90,7 +90,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .back-region{padding-left:10px;max-width:180px}
 .back-region:hover{background:var(--surface-hover)}
 .back-region span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.map-zoom{position:absolute;bottom:var(--bottom);right:var(--right);padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;z-index:15;box-shadow:var(--shadow);}
+.map-zoom{position:absolute;bottom:var(--bottom);right:var(--right);padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;z-index:15;box-shadow:var(--shadow);backdrop-filter:blur(10px)}
 .map-zoom button{height:44px;width:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;color:#5e7865}
 .map-zoom button:hover{background:var(--surface-hover)}
 .map-zoom>span{height:1px;background:var(--line);margin:3px 8px}
@@ -112,11 +112,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .map-status button{text-decoration:underline;min-height:36px}
 
 /* Geography keeps real open borders and the existing gentle terrain colours. */
-.country{fill:#f7f8f6;stroke:none;cursor:pointer;transition:opacity .15s;-webkit-tap-highlight-color:transparent;outline:none}
+.country{fill:#f7f8f6;stroke:none;cursor:pointer;transition:opacity .2s,filter .2s;-webkit-tap-highlight-color:transparent;outline:none}
 .country:focus-visible,.country:focus{outline:none}
 .country.dimmed{opacity:.16}
 .country.dimmed:hover{opacity:1}
-
+.country-region:hover>.country{filter:brightness(1.035)}
 .country-border{fill:none;stroke:#87938a;stroke-width:.7px;stroke-linejoin:round;stroke-linecap:round;pointer-events:none;transition:stroke .2s,stroke-width .2s,opacity .24s}
 .country-border.visited{stroke:#567062;stroke-width:.95px}
 .country-border.selected{stroke:#50685e;stroke-width:1.1px}
@@ -458,4 +458,3 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .pairing-code.paired{background:#f0f6ed;border-color:#d4e2ce;color:#416d56}
 .pairing-success{display:flex;flex-direction:column;align-items:center;gap:14px;font-size:14px;font-weight:550}
 
-.country-border.antarctica-border,.country-region:hover>.antarctica-border{stroke:#a8b5b8;stroke-width:.65px}

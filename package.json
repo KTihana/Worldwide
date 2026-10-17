@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/generate-brand.mjs && node scripts/prepare-map-regions.mjs && vite build && node scripts/generate-offline-assets.mjs",
+    "build": "node scripts/generate-brand.mjs && vite build && node scripts/generate-offline-assets.mjs",
     "start": "node server/index.ts",
     "check": "tsc --noEmit",
     "test": "node tests/map-transitions.mjs && node tests/detailed-outlines.mjs && node tests/map-focus.mjs && node tests/map-styles.mjs && node tests/terrain.mjs && node tests/photo-layout.mjs && node tests/offline-worker.mjs && node tests/native-bridge.mjs && node tests/local-server.mjs",
