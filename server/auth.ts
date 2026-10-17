@@ -1,10 +1,14 @@
 import {randomBytes,createHash,scrypt,timingSafeEqual} from 'node:crypto';
 import {db} from './storage.ts';
 import {ApiError} from './errors.ts';
+import QRCode from 'qrcode';
 const lifetime=30*24*60*60;
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 const cookieName='elsewhere_session';
 type Account={id:string;email:string;password_hash:string;recovery_hash:string};
+const pairingLifetime=3*60*1000;
+const pairings=new Map<string,{accountId:string;expiresAt:number;used:boolean}>();
+function forgetPairings(accountId:string){for(const [key,value] of pairings)if(value.accountId===accountId||value.expiresAt<=Date.now())pairings.delete(key)}
 function cookie(request:Request){return request.headers.get('cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith(cookieName+'='))?.slice(cookieName.length+1)||''}
 function sessionCookie(request:Request,value:string,age=lifetime){return `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${new URL(request.url).protocol==='https:'?'; Secure':''}`}
 export function sameOrigin(request:Request){
@@ -41,19 +45,60 @@ function signIn(request:Request,id:string,extra:Record<string,unknown>={}){
  const account=db.prepare('SELECT email FROM accounts WHERE id=?').bind(id).first<{email:string}>()!;
  return Response.json({account:{email:account.email},...extra},{headers:{'Set-Cookie':sessionCookie(request,token),'Cache-Control':'no-store'}});
 }
-export async function authRoute(request:Request,action:string,localConnection:boolean,clientAddress:string){
+export async function authRoute(request:Request,action:string,localConnection:boolean,clientAddress:string,pairingOrigins:string[]=[]){
  sameOrigin(request);
  const exists=!!db.prepare('SELECT id FROM accounts LIMIT 1').first();
- if(action==='session'&&request.method==='GET')return Response.json({account:currentAccount(request),needsSetup:!exists,canSetup:localConnection,serverUrl:process.env.ELSEWHERE_PUBLIC_ORIGIN||null},{headers:{'Cache-Control':'no-store'}});
+ if(action==='session'&&request.method==='GET')return Response.json({account:currentAccount(request),needsSetup:!exists,canSetup:localConnection,canReset:localConnection,serverUrl:process.env.ELSEWHERE_PUBLIC_ORIGIN||null},{headers:{'Cache-Control':'no-store'}});
+ if(action==='pair-status'&&request.method==='GET'){
+  const accountId=requireAccount(request);
+  if(!localConnection)throw new ApiError('Show the QR code on your computer.',403);
+  const id=new URL(request.url).searchParams.get('id')||'',pairing=pairings.get(id);
+  const status=!pairing||pairing.accountId!==accountId||pairing.expiresAt<=Date.now()?'expired':pairing.used?'paired':'waiting';
+  return Response.json({status},{headers:{'Cache-Control':'no-store'}});
+ }
  if(request.method!=='POST')throw new ApiError('Not found.',404);
  if(action==='logout'){
+  const account=currentAccount(request);if(account)forgetPairings(account.id);
   db.prepare('DELETE FROM sessions WHERE token_hash=?').bind(digest(cookie(request))).run();
   return Response.json({ok:true},{headers:{'Set-Cookie':sessionCookie(request,'',0),'Cache-Control':'no-store'}});
  }
- if(!['setup','login','recover'].includes(action))throw new ApiError('Not found.',404);
+ if(!['setup','login','recover','reset-local','pair-start','pair-complete'].includes(action))throw new ApiError('Not found.',404);
  rateLimit('ip:'+clientAddress,30);
  if(!request.headers.get('content-type')?.startsWith('application/json'))throw new ApiError('Invalid request.');
- const body=await request.json() as Record<string,unknown>,address=email(body.email),secret=password(body.password);
+ const body=await request.json() as Record<string,unknown>;
+ if(!body||typeof body!=='object'||Array.isArray(body))throw new ApiError('Invalid request.');
+ if(action==='pair-start'){
+  const accountId=requireAccount(request);
+  if(!localConnection)throw new ApiError('Show the QR code on your computer.',403);
+  if(typeof body.serverUrl!=='string'||!pairingOrigins.includes(body.serverUrl))throw new ApiError('Choose this computer’s Wi-Fi address.');
+  const token=randomBytes(32).toString('hex'),expiresAt=Date.now()+pairingLifetime;
+  const link=new URL('worldwide://pair');link.searchParams.set('server',body.serverUrl);link.searchParams.set('token',token);
+  const pairingUrl=link.href;
+  const qr=await QRCode.toString(pairingUrl,{type:'svg',errorCorrectionLevel:'M',margin:4,width:240,color:{dark:'#273e34',light:'#ffffff'}});
+  // Password resets and sign-out can happen while the QR renderer is working.
+  if(currentAccount(request)?.id!==accountId)throw new ApiError('Please sign in again.',401);
+  const pairingId=digest(token);
+  forgetPairings(accountId);pairings.set(pairingId,{accountId,expiresAt,used:false});
+  return Response.json({qr,pairingUrl,pairingId,expiresAt},{headers:{'Cache-Control':'no-store'}});
+ }
+ if(action==='pair-complete'){
+  if(typeof body.token!=='string'||!/^[a-f0-9]{64}$/.test(body.token))throw new ApiError('This QR code is invalid or expired. Show a new code on your computer.',401);
+  const key=digest(body.token),pairing=pairings.get(key);
+  if(!pairing||pairing.used||pairing.expiresAt<=Date.now()){if(pairing&&pairing.expiresAt<=Date.now())pairings.delete(key);throw new ApiError('This QR code is invalid or expired. Show a new code on your computer.',401)}
+  pairing.used=true;
+  return signIn(request,pairing.accountId);
+ }
+ if(action==='reset-local'){
+  if(!localConnection)throw new ApiError('Reset your password in Worldwide on your computer.',403);
+  rateLimit('local-reset:'+clientAddress,5);
+  const account=db.prepare('SELECT id FROM accounts LIMIT 1').first<{id:string}>();
+  if(!account)throw new ApiError('Create your account first.',409);
+  const encoded=await hashPassword(password(body.password));
+  db.batch([db.prepare('UPDATE accounts SET password_hash=?,recovery_hash=? WHERE id=?').bind(encoded,digest(randomBytes(32).toString('hex')),account.id),db.prepare('DELETE FROM sessions WHERE user_id=?').bind(account.id)]);
+  forgetPairings(account.id);
+  return signIn(request,account.id);
+ }
+ const address=email(body.email),secret=password(body.password);
  rateLimit('email:'+digest(address),10);
  if(action==='setup'){
   if(!localConnection)throw new ApiError('Create your account on the computer running Worldwide.',403);
@@ -63,7 +108,7 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   // preserves every photo key, cover, note, and visited country in place.
   if(db.prepare('SELECT id FROM accounts LIMIT 1').first())throw new ApiError('An account already exists. Please sign in.',409);
   db.prepare('INSERT INTO accounts(id,email,password_hash,recovery_hash,created_at) VALUES(?,?,?,?,?)').bind('local',address,encoded,digest(recoveryCode),new Date().toISOString()).run();
-  return signIn(request,'local',{recoveryCode});
+  return signIn(request,'local');
  }
  const account=db.prepare('SELECT * FROM accounts WHERE email=?').bind(address).first<Account>();
  if(action==='recover'){
@@ -71,6 +116,7 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   const encoded=await hashPassword(secret),recoveryCode=randomBytes(24).toString('hex');
   if(db.prepare('SELECT recovery_hash FROM accounts WHERE id=?').bind(account.id).first<{recovery_hash:string}>()?.recovery_hash!==account.recovery_hash)throw new ApiError('This recovery code has already been used.',401);
   db.batch([db.prepare('UPDATE accounts SET password_hash=?,recovery_hash=? WHERE id=?').bind(encoded,digest(recoveryCode),account.id),db.prepare('DELETE FROM sessions WHERE user_id=?').bind(account.id)]);
+  forgetPairings(account.id);
   return signIn(request,account.id,{recoveryCode});
  }
  const valid=await verifyPassword(secret,account?.password_hash||'00000000000000000000000000000000:'+ '0'.repeat(128));

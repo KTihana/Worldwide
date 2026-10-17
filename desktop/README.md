@@ -4,15 +4,17 @@ The installed desktop app includes its own server and database runtime. Users do
 
 ## Windows
 
-Run `Worldwide-Setup-0.1.1-x64.exe` to install, or `Worldwide-Portable-0.1.1-x64.exe` to run without an installer. The builds are currently unsigned; Windows may ask for confirmation because there is no publisher certificate. No cloud service is used.
+Run `Worldwide-Setup-0.1.2-x64.exe` to install, or `Worldwide-Portable-0.1.2-x64.exe` to run without an installer. The builds are currently unsigned; Windows may ask for confirmation because there is no publisher certificate. No cloud service is used.
 
-Create the private account on the computer, then open **Your album** to find the computer's local address. Enter that address in the Android app and sign in with the same email and password. The computer may show a Windows Firewall prompt; allow access on your private/home network so your phone can reach it. The computer and phone need a connection to sync; the downloaded phone album is viewable offline.
+Create your account on the computer. Open **Your album → Connect Android**, then tap **Scan computer QR** in Worldwide on your phone. Scanning signs the phone into the same album; both devices must use the same Wi-Fi. The computer may show a Windows Firewall prompt; allow access on your private/home network so your phone can reach it. The computer and phone need a connection to sync; the downloaded phone album is viewable offline.
 
 New installed albums live in `%APPDATA%\Worldwide\album` on Windows, or `~/Library/Application Support/Worldwide/album` on macOS. Uninstalling does not delete this folder. The application does not bundle anyone's album or passwords.
 
 To use an existing album, close its running server and use **File → Choose album folder…**, selecting the folder containing `atlas.sqlite` and `uploads`. You can copy the entire original `elsewhere/data` folder to the PC first, while the original server is stopped. The app uses the selected folder directly. Back up that folder periodically.
 
 If the developer's local server is already running on port 3000, Worldwide opens that same album and leaves the existing server running when the desktop window closes.
+
+Forgot your password? Choose **Forgot password?** on this computer and set a new one. No recovery code is needed. This works only on the computer hosting the album and signs out other devices; scan a fresh QR code to reconnect them.
 
 ## Build
 

@@ -1,16 +1,16 @@
 {
   "name": "worldwide-local",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "engines": {
     "node": ">=22.18.0"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/generate-brand.mjs && vite build && node scripts/generate-offline-assets.mjs",
+    "build": "node scripts/generate-brand.mjs && node scripts/prepare-map-regions.mjs && vite build && node scripts/generate-offline-assets.mjs",
     "start": "node server/index.ts",
     "check": "tsc --noEmit",
-    "test": "node tests/map-transitions.mjs && node tests/detailed-outlines.mjs && node tests/map-focus.mjs && node tests/map-styles.mjs && node tests/terrain.mjs && node tests/photo-layout.mjs && node tests/offline-worker.mjs && node tests/local-server.mjs",
+    "test": "node tests/map-transitions.mjs && node tests/detailed-outlines.mjs && node tests/map-focus.mjs && node tests/map-styles.mjs && node tests/terrain.mjs && node tests/photo-layout.mjs && node tests/offline-worker.mjs && node tests/native-bridge.mjs && node tests/local-server.mjs",
     "desktop:prepare": "node scripts/prepare-desktop.mjs",
     "desktop:dev": "npm run build && npm run desktop:prepare && electron .",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs",
@@ -22,12 +22,14 @@
   },
   "dependencies": {
     "lucide-react": "^1.31.0",
+    "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",

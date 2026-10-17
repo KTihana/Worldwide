@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm,readFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {tmpdir,networkInterfaces} from 'node:os';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createServer} from 'node:net';
+import {request as httpRequest} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const temp=await mkdtemp(resolve(tmpdir(),'elsewhere-local-test-'));
@@ -16,6 +17,7 @@ async function start(){
 }
 async function stop(){if(child&&child.exitCode===null){const done=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGTERM');await done}}
 async function request(path,options={}){const response=await fetch(base+path,{...options,headers:{origin:base,cookie:sessionCookie,...options.headers}});return {status:response.status,cookie:response.headers.get('set-cookie')?.split(';')[0],data:response.headers.get('content-type')?.includes('json')?await response.json():await response.arrayBuffer()}}
+const post=(path,body,headers={})=>request(path,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
 const patch=(id,body)=>request(`/api/countries/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 try{
  await start();
@@ -24,7 +26,7 @@ try{
  assert.equal((await fetch(base+'/api/atlas')).status,401,'Private album requires login');
  const legacy=new DatabaseSync(resolve(temp,'atlas.sqlite'));legacy.prepare('INSERT INTO visits(user_id,country_id,visited,note,updated_at) VALUES(?,?,?,?,?)').run('local','HRV',1,'Existing album',new Date().toISOString());legacy.close();
  const credentials={email:'owner@example.test',password:'a long private test password'};
- const setup=await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)});assert.equal(setup.status,200);assert.ok(setup.cookie);assert.ok(setup.data.recoveryCode);sessionCookie=setup.cookie;
+ const setup=await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)});assert.equal(setup.status,200);assert.ok(setup.cookie);assert.equal(Object.hasOwn(setup.data,'recoveryCode'),false,'New accounts need no recovery code');sessionCookie=setup.cookie;
  const connection=await request('/api/connection');assert.equal(connection.status,200);assert.ok(Array.isArray(connection.data.localUrls));assert.ok(connection.data.localUrls.every(url=>url.startsWith('http://')),'Native Android pairing provides LAN HTTP addresses');
  assert.equal((await request('/api/atlas')).data.visits.find(v=>v.countryId==='HRV').note,'Existing album','Account setup preserves legacy visits');
  assert.equal((await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)})).status,409,'Only the private owner can be created');
@@ -68,11 +70,49 @@ try{
  assert.match(html,/manifest.webmanifest/);
  const manifest=await(await fetch(base+'/manifest.webmanifest')).json();assert.equal(manifest.orientation,'landscape');
  assert.ok((await readFile(resolve(temp,'atlas.sqlite'))).length>0,'Database is a local file');
+ assert.equal((await request('/api/auth/session')).data.canReset,true,'The hosting computer can reset its account');
+ assert.equal((await post('/api/auth/pair-start',{serverUrl:base},{cookie:''})).status,401,'QR creation requires a signed-in account');
+ assert.equal((await post('/api/auth/pair-start',{serverUrl:base},{origin:'https://example.org'})).status,403,'Cross-origin QR creation is blocked');
+ assert.equal((await post('/api/auth/pair-start',{serverUrl:'http://192.0.2.1:3000'})).status,400,'QR codes cannot point at an unavailable computer address');
+ const pair=await post('/api/auth/pair-start',{serverUrl:base});assert.equal(pair.status,200);assert.match(pair.data.qr,/<svg[\s>]/);
+ const pairingUrl=new URL(pair.data.pairingUrl);assert.equal(pairingUrl.protocol,'worldwide:');assert.equal(pairingUrl.hostname,'pair');assert.equal(pairingUrl.searchParams.get('server'),base);
+ const token=pairingUrl.searchParams.get('token');assert.match(token,/^[a-f0-9]{64}$/);
+ assert.match(pair.data.pairingId,/^[a-f0-9]{64}$/);assert.equal((await request(`/api/auth/pair-status?id=${pair.data.pairingId}`)).data.status,'waiting','The PC shows a pending QR code');
+ assert.equal((await request(`/api/auth/pair-status?id=${pair.data.pairingId}`,{headers:{cookie:''}})).status,401,'Pairing status requires the signed-in PC');
+ const expiration=typeof pair.data.expiresAt==='number'?pair.data.expiresAt:Date.parse(pair.data.expiresAt);assert.ok(expiration>Date.now()+170000&&expiration<=Date.now()+185000,'QR codes expire in three minutes');
+ assert.equal((await post('/api/auth/pair-complete',{token:'0'.repeat(64)},{cookie:''})).status,401,'Unknown QR tokens are rejected');
+ assert.equal((await post('/api/auth/pair-complete',{token},{cookie:'',origin:'https://example.org'})).status,403,'Cross-origin pairing is blocked without consuming the token');
+ const paired=await post('/api/auth/pair-complete',{token},{cookie:''});assert.equal(paired.status,200);const qrCookie=paired.cookie;assert.ok(qrCookie);assert.notEqual(qrCookie,sessionCookie);assert.notEqual(qrCookie,phoneCookie);assert.equal(paired.data.account.email,credentials.email);
+ assert.equal((await request('/api/atlas',{headers:{cookie:qrCookie}})).data.photos.length,1,'QR sign-in opens the same album on another device');
+ assert.equal((await request(`/api/auth/pair-status?id=${pair.data.pairingId}`)).data.status,'paired','The PC confirms that the phone connected');
+ assert.equal((await post('/api/auth/pair-complete',{token},{cookie:''})).status,401,'A QR code can be claimed only once');
+ const pending=await post('/api/auth/pair-start',{serverUrl:base});assert.equal(pending.status,200);const logoutToken=new URL(pending.data.pairingUrl).searchParams.get('token');
+ const lan=Object.values(networkInterfaces()).flat().find(address=>address&&address.family==='IPv4'&&!address.internal);
+ if(lan){
+  const lanBase=`http://${lan.address}:${port}`;
+  const phoneRequest=async(path,body)=>fetch(lanBase+path,{method:body?'POST':'GET',headers:{origin:lanBase,cookie:sessionCookie,'Content-Type':'application/json','X-Forwarded-For':'127.0.0.1','X-Forwarded-Host':`localhost:${port}`},...(body?{body:JSON.stringify(body)}:{})});
+  assert.equal((await(await phoneRequest('/api/auth/session')).json()).canReset,false,'A LAN client is not the trusted computer');
+  assert.equal((await phoneRequest('/api/auth/reset-local',{password:'untrusted phone password'})).status,403,'A phone cannot reset the PC password, even with spoofed forwarding headers');
+  assert.equal((await phoneRequest('/api/auth/pair-start',{serverUrl:base})).status,403,'A phone cannot create new pairing codes');
+  // Use node:http here: fetch normalizes Host to the URL, hiding this boundary.
+  const hostRequest=(target,path,host,body)=>new Promise((resolve,reject)=>{const req=httpRequest(target+path,{method:body?'POST':'GET',headers:{host,origin:`http://${host}`,'Content-Type':'application/json'}},res=>{const chunks=[];res.on('data',chunk=>chunks.push(chunk));res.on('end',()=>{try{resolve({status:res.statusCode,data:JSON.parse(Buffer.concat(chunks).toString())})}catch(error){reject(error)}})});req.on('error',reject);req.end(body?JSON.stringify(body):undefined)});
+  assert.equal((await hostRequest(lanBase,'/api/auth/reset-local',`127.0.0.1:${port}`,{password:'untrusted phone password'})).status,403,'A loopback Host header cannot turn a LAN socket into the trusted computer');
+  assert.equal((await hostRequest(base,'/api/auth/session',`${lan.address}:${port}`)).data.canReset,false,'A loopback socket addressed through a LAN host is not trusted');
+ }else console.log('SKIP: LAN-only trusted-computer checks (no LAN interface available).');
  await request('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
  assert.equal((await request('/api/atlas')).status,401,'Signing out revokes this device');
  assert.equal((await request('/api/atlas',{headers:{cookie:phoneCookie}})).status,200,'Signing out leaves the other device signed in');
- const recovery=await request('/api/auth/recover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,password:'new private test password',recoveryCode:setup.data.recoveryCode})});assert.equal(recovery.status,200);
- assert.equal((await request('/api/atlas',{headers:{cookie:phoneCookie}})).status,401,'Password recovery revokes old sessions');
- assert.equal((await request('/api/auth/recover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,recoveryCode:setup.data.recoveryCode})})).status,401,'Recovery codes cannot be reused');
- console.log('PASS: private account, legacy album preservation, independent devices, shared edits and photos, protected files, session restart persistence, logout/recovery, landscape manifest, and origin protection.');
+ assert.equal((await post('/api/auth/pair-complete',{token:logoutToken},{cookie:''})).status,401,'Signing out invalidates unclaimed QR codes');
+ const resetPending=await post('/api/auth/pair-start',{serverUrl:base},{cookie:phoneCookie});assert.equal(resetPending.status,200);const pendingToken=new URL(resetPending.data.pairingUrl).searchParams.get('token');
+ const replacementPassword='new private test password';
+ assert.equal((await post('/api/auth/reset-local',{password:'short'},{cookie:''})).status,400,'Local reset validates the new password');
+ assert.equal((await post('/api/auth/reset-local',{password:replacementPassword},{cookie:'',origin:'https://example.org'})).status,403,'Cross-origin requests cannot reset the password');
+ const reset=await post('/api/auth/reset-local',{password:replacementPassword},{cookie:''});assert.equal(reset.status,200);assert.ok(reset.cookie,'Trusted computer signs in after reset');assert.equal(reset.data.account.email,credentials.email,'Reset does not need the email');
+ for(const cookie of [phoneCookie,qrCookie,sessionCookie])assert.equal((await request('/api/atlas',{headers:{cookie}})).status,401,'Reset revokes every previous device session');
+ assert.equal((await post('/api/auth/pair-complete',{token:pendingToken},{cookie:''})).status,401,'Reset invalidates unclaimed QR codes');
+ sessionCookie=reset.cookie;
+ const resetAlbum=(await request('/api/atlas')).data;assert.equal(resetAlbum.photos.length,1,'Reset preserves photos');assert.equal(resetAlbum.visits.find(v=>v.countryId==='HRV').note,'Existing album','Reset preserves the existing album');assert.deepEqual(Buffer.from((await request(`/api/photos/${ids[0]}`)).data),bytes,'Reset preserves uploaded photo bytes');
+ assert.equal((await post('/api/auth/login',credentials,{cookie:''})).status,401,'Previous password stops working');
+ assert.equal((await post('/api/auth/login',{email:credentials.email,password:replacementPassword},{cookie:''})).status,200,'New password works');
+ console.log('PASS: private account, preserved album, shared edits/photos, QR pairing and single-use tokens, trusted-PC reset and session revocation, landscape manifest, and origin protection.');
 }finally{await stop();await rm(temp,{recursive:true,force:true})}

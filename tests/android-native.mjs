@@ -5,6 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir,homedir} from 'node:os';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import sharp from 'sharp';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const sdk=process.env.ANDROID_HOME||join(homedir(),'Library/Android/sdk');
 const java=process.env.JAVA_HOME||'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home';
@@ -26,9 +27,16 @@ try{
  spawnSync(adb,['-s',emulator,'uninstall','app.worldwide'],{stdio:'ignore'});
  for(const apk of ['app/build/outputs/apk/debug/app-debug.apk','app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'])run(adb,['-s',emulator,'install','-r',join(android,apk)]);
  run(adb,['-s',emulator,'reverse',`tcp:${port}`,`tcp:${port}`]);
+ const connection=await(await fetch(base+'/api/connection',{headers:{Cookie:pcCookie}})).json();
+ assert.ok(connection.localUrls.length,'Native pairing test needs a local network address.');
+ const pairResponse=await fetch(base+'/api/auth/pair-start',{method:'POST',headers:{Origin:base,Cookie:pcCookie,'Content-Type':'application/json'},body:JSON.stringify({serverUrl:base})});assert.equal(pairResponse.status,200);
+ const pairing=await pairResponse.json();
+ // Decode the actual SVG displayed by the PC, not a separately generated lookalike.
+ const qrPng=(await sharp(Buffer.from(pairing.qr)).resize(640,640).png().toBuffer()).toString('base64');
  // Keep the Node event loop available to the test server during instrumentation.
- const output=await new Promise((resolve,reject)=>{const test=spawn(adb,['-s',emulator,'shell','am','instrument','-w','-e','server',base,'app.worldwide.test/app.worldwide.NativeSmokeTests'],{env});let text='';test.stdout.on('data',chunk=>text+=chunk);test.stderr.on('data',chunk=>text+=chunk);test.on('exit',code=>code===0?resolve(text):reject(new Error(text)));});
+ const output=await new Promise((resolve,reject)=>{const test=spawn(adb,['-s',emulator,'shell','am','instrument','-w','-e','server',base,'-e','qrPng',qrPng,'app.worldwide.test/app.worldwide.NativeSmokeTests'],{env});let text='';test.stdout.on('data',chunk=>text+=chunk);test.stderr.on('data',chunk=>text+=chunk);test.on('exit',code=>code===0?resolve(text):reject(new Error(text)));});
  assert.match(output,/address restrictions passed/);console.log(output.trim());
+ assert.match(output,/QR decoding and atomic pairing passed/);
  const desktop=await(await fetch(base+'/api/atlas',{headers:{Cookie:pcCookie}})).json();
  assert.ok(desktop.photos.some(photo=>photo.countryId==='HRV'&&photo.cropX===0.4&&photo.cropZoom===1.5),'Independent PC session sees native phone upload and crop');
  assert.equal(desktop.visits.find(visit=>visit.countryId==='HRV')?.visited,1,'Independent PC session sees phone visit');

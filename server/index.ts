@@ -37,7 +37,7 @@ const handleRequest=async(req:IncomingMessage,res:ServerResponse)=>{
   const request=new Request(url,{method,headers,...(!['GET','HEAD'].includes(method)?{body:Buffer.concat(chunks)}:{})});
   let response:Response;
   if(url.pathname==='/api/health'&&method==='GET')response=Response.json({app:'worldwide-local',storage:'local'});
-  else if(url.pathname.startsWith('/api/auth/'))response=await authRoute(request,url.pathname.slice('/api/auth/'.length),localConnection,clientAddress);
+  else if(url.pathname.startsWith('/api/auth/'))response=await authRoute(request,url.pathname.slice('/api/auth/'.length),localConnection,clientAddress,[...lanAddresses.map(address=>`http://${address}:${port}`),...(publicOrigin?[publicOrigin]:[]),`http://127.0.0.1:${port}`,`http://localhost:${port}`]);
   else if(url.pathname==='/api/connection'&&method==='GET'){const {requireAccount}=await import('./auth.ts');requireAccount(request);response=Response.json({urls:publicOrigin?[publicOrigin]:lanAddresses.map(address=>tlsCert?`https://${address}:${tlsPort}`:`http://${address}:${port}`),localUrls:lanAddresses.map(address=>`http://${address}:${port}`)},{headers:{'Cache-Control':'no-store'}})}
   else if(url.pathname==='/api/preferences'&&method==='PATCH')response=await savePreferences(request);
   else if(url.pathname==='/api/atlas'&&method==='GET')response=await atlas.GET(request);

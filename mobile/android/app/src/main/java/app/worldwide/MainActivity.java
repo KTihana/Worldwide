@@ -17,6 +17,9 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import com.journeyapps.barcodescanner.ScanOptions;
+import com.journeyapps.barcodescanner.ScanIntentResult;
+import com.google.zxing.client.android.Intents;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.*;
@@ -42,11 +45,14 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private byte[] pendingSave;
     private String pendingSaveId;
+    private String pendingScanId;
+    private volatile String pendingPairLink="";
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         prefs=getSharedPreferences("worldwide",MODE_PRIVATE);
         album=new File(getFilesDir(),"album");album.mkdirs();
+        receivePairLink(getIntent());
         web=new WebView(this);web.setBackgroundColor(Color.rgb(237,242,239));
         setContentView(web);
         web.setOnApplyWindowInsetsListener((view,insets)->{
@@ -85,6 +91,8 @@ public class MainActivity extends Activity {
         });
         web.loadUrl(APP_ORIGIN+"/");
     }
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);receivePairLink(intent);if(web!=null)web.evaluateJavascript("window.dispatchEvent(new Event('worldwide-pair-link'))",null);}
+    private void receivePairLink(Intent intent){if(intent!=null&&Intent.ACTION_VIEW.equals(intent.getAction())&&intent.getData()!=null){String value=intent.getData().toString();if(value.length()<=4096&&"worldwide".equals(intent.getData().getScheme())&&"pair".equals(intent.getData().getHost()))pendingPairLink=value;}}
     private boolean trusted(Uri uri){return "https".equals(uri.getScheme())&&"app.worldwide.local".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443);}
     private static String mime(String path){
         if(path.endsWith(".html"))return "text/html";if(path.endsWith(".js"))return "text/javascript";if(path.endsWith(".css"))return "text/css";
@@ -105,7 +113,7 @@ public class MainActivity extends Activity {
             return p[0]==10||p[0]==127||p[0]==192&&p[1]==168||p[0]==172&&p[1]>=16&&p[1]<=31||p[0]==169&&p[1]==254;
         }catch(Exception error){return false;}
     }
-    private static class Result { final int status;final String mime;final byte[] bytes;final boolean offline;Result(int status,String mime,byte[] bytes,boolean offline){this.status=status;this.mime=mime;this.bytes=bytes;this.offline=offline;} }
+    private static class Result { final int status;final String mime;final byte[] bytes;final boolean offline;final String cookie;Result(int status,String mime,byte[] bytes,boolean offline){this(status,mime,bytes,offline,null);}Result(int status,String mime,byte[] bytes,boolean offline,String cookie){this.status=status;this.mime=mime;this.bytes=bytes;this.offline=offline;this.cookie=cookie;} }
     private static Map<String,String> headers(String... values){Map<String,String> result=new HashMap<>();for(int i=0;i<values.length;i+=2)result.put(values[i],values[i+1]);return result;}
     private Result network(String origin,String path,String method,JSONObject headers,byte[] body,String cookie,int expected) throws Exception{
         if(!path.matches("/api/[a-zA-Z0-9_/-]+")||path.contains(".."))throw new IOException("Invalid API path.");
@@ -118,17 +126,44 @@ public class MainActivity extends Activity {
             int status=connection.getResponseCode();String content=connection.getContentType();if(content==null)content="application/octet-stream";
             InputStream stream=status>=400?connection.getErrorStream():connection.getInputStream();byte[] bytes=stream==null?new byte[0]:readLimited(stream,40*1024*1024);
             if(status>=300&&status<400)throw new IOException("The computer address redirected. Use its direct local address.");
-            synchronized(MainActivity.this){
-                if(expected==generation&&origin.equals(prefs.getString("server",""))){
-                    List<String> setCookies=new ArrayList<>();for(Map.Entry<String,List<String>> entry:connection.getHeaderFields().entrySet())if("set-cookie".equalsIgnoreCase(entry.getKey()))setCookies.addAll(entry.getValue());
-                    for(String value:setCookies)if(value.startsWith("elsewhere_session=")||value.startsWith("worldwide_session=")){String session=value.split(";",2)[0];prefs.edit().putString("cookie",session.endsWith("=")?"":session).apply();}
-                }
+            String sessionCookie=null;
+            for(Map.Entry<String,List<String>> entry:connection.getHeaderFields().entrySet())if("set-cookie".equalsIgnoreCase(entry.getKey()))for(String value:entry.getValue()){
+                String session=value.split(";",2)[0];if(session.matches("(?:elsewhere|worldwide)_session=[a-f0-9]{64}"))sessionCookie=session;
+                else if(session.equals("elsewhere_session=")||session.equals("worldwide_session="))sessionCookie="";
             }
-            return new Result(status,content.split(";")[0],bytes,false);
+            // Network responses never mutate credentials: callers commit them only after validation.
+            return new Result(status,content.split(";")[0],bytes,false,sessionCookie);
         }finally{connection.disconnect();}
     }
     private static byte[] readLimited(InputStream source,int limit) throws IOException{try(InputStream stream=source;ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[32768];int n;while((n=stream.read(buffer))!=-1){if(bytes.size()+n>limit)throw new IOException("This file is too large.");bytes.write(buffer,0,n);}return bytes.toByteArray();}}
     private synchronized void clearAlbum(){generation++;prefs.edit().remove("cookie").remove("account").remove("offline-state").apply();File[] files=album.listFiles();if(files!=null)for(File file:files)file.delete();}
+    private static class Pairing { final String origin,token;Pairing(String origin,String token){this.origin=origin;this.token=token;} }
+    private static Pairing parsePairing(String value)throws Exception{
+        if(value==null||value.length()>4096)throw new IOException("Scan the QR code shown in Worldwide on your computer.");
+        Uri uri=Uri.parse(value);
+        if(!"worldwide".equals(uri.getScheme())||!"pair".equals(uri.getAuthority())||uri.getFragment()!=null||!(uri.getPath()==null||uri.getPath().isEmpty())||!uri.getQueryParameterNames().equals(new HashSet<>(Arrays.asList("server","token")))||uri.getQueryParameters("server").size()!=1||uri.getQueryParameters("token").size()!=1)throw new IOException("This is not a Worldwide pairing QR code.");
+        String server=uri.getQueryParameter("server"),token=uri.getQueryParameter("token");
+        if(server==null||token==null||!token.matches("[a-f0-9]{64}"))throw new IOException("This pairing QR code is incomplete. Open a new code on your computer.");
+        return new Pairing(normalize(server),token);
+    }
+    private JSONObject pair(String value,int expected)throws Exception{
+        Pairing pairing=parsePairing(value);
+        Result response;
+        try{response=network(pairing.origin,"/api/auth/pair-complete","POST",new JSONObject().put("content-type","application/json"),new JSONObject().put("token",pairing.token).toString().getBytes(StandardCharsets.UTF_8),"",-1);}
+        catch(IOException error){throw new IOException("Couldn’t reach your computer. Keep Worldwide open there and use the same Wi-Fi.");}
+        JSONObject result;
+        try{result=new JSONObject(new String(response.bytes,StandardCharsets.UTF_8));}catch(Exception error){throw new IOException("This computer did not return a Worldwide pairing response.");}
+        if(response.status!=200)throw new IOException(result.optString("error","That code expired. Open a new QR code on your computer."));
+        JSONObject account=result.optJSONObject("account");String email=account==null?"":account.optString("email");
+        if(email.isEmpty()||email.length()>254||response.cookie==null||response.cookie.isEmpty())throw new IOException("Pairing was incomplete. Open a new QR code and try again.");
+        synchronized(this){
+            if(expected!=generation)throw new IOException("Your connection changed while pairing. Please scan again.");
+            // The previous server, session and photo cache survive every failed pairing attempt.
+            clearAlbum();
+            prefs.edit().putString("server",pairing.origin).putString("cookie",response.cookie).putString("account",new JSONObject().put("account",account).put("needsSetup",false).put("canSetup",false).toString()).commit();
+        }
+        return new JSONObject().put("value",true);
+    }
     private String photoKey(String path) throws Exception{byte[] digest=MessageDigest.getInstance("SHA-256").digest(path.getBytes(StandardCharsets.UTF_8));StringBuilder key=new StringBuilder();for(byte value:digest)key.append(String.format(Locale.ROOT,"%02x",value));return key.toString();}
     private synchronized Result cached(String path) throws Exception{
         File file=new File(album,path.equals("/api/atlas")?"atlas.json":photoKey(path)+".photo");if(!file.isFile())return null;
@@ -148,9 +183,12 @@ public class MainActivity extends Activity {
         if(photo){Result saved=cached(path);if(saved!=null)return saved;}
         try{
             Result response=network(origin,path,method,headers,body,cookie,expected);
-            if(expected!=generation)throw new IOException("The connection changed. Please try again.");
+            synchronized(this){
+                if(expected!=generation||!origin.equals(prefs.getString("server","")))throw new IOException("The connection changed. Please try again.");
+                if(path.equals("/api/auth/logout")&&response.status==200){clearAlbum();return response;}
+                if(response.cookie!=null)prefs.edit().putString("cookie",response.cookie).apply();
+            }
             if(method.equals("GET")&&(path.equals("/api/atlas")||photo)&&response.status==200)saveCache(path,response,expected);
-            if(path.equals("/api/auth/logout")&&response.status==200)clearAlbum();
             return response;
         }catch(IOException error){
             if(expected==generation&&method.equals("GET")&&path.equals("/api/atlas")){Result saved=cached(path);if(saved!=null)return saved;}
@@ -160,8 +198,18 @@ public class MainActivity extends Activity {
     private void reply(String id,JSONObject result){runOnUiThread(()->{if(web!=null)web.evaluateJavascript("window.worldwideNativeReply?.("+JSONObject.quote(id)+","+result+")",null);});}
     private void fail(String id,Exception error){try{reply(id,new JSONObject().put("error",error.getMessage()==null?"Please try again.":error.getMessage()));}catch(Exception ignored){}}
     private void progress(int saved,int total){runOnUiThread(()->{if(web!=null)web.evaluateJavascript("window.worldwideNativeProgress?.("+saved+","+total+")",null);});}
+    private static String scanContents(int result,Intent intent)throws IOException{
+        if(intent!=null&&intent.getBooleanExtra(Intents.Scan.MISSING_CAMERA_PERMISSION,false))throw new IOException("Allow camera access to scan, or enter your computer address instead.");
+        ScanIntentResult scan=ScanIntentResult.parseActivityResult(result,intent);return scan.getContents()==null?"":scan.getContents();
+    }
     private class Bridge {
         @JavascriptInterface public String connection(){return prefs.getString("server","");}
+        @JavascriptInterface public String takePairLink(){String value=pendingPairLink;pendingPairLink="";return value;}
+        @JavascriptInterface public void scanQr(String id){runOnUiThread(()->{if(pendingScanId!=null){fail(id,new IOException("The camera is already open."));return;}pendingScanId=id;
+            ScanOptions options=new ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Scan the QR code in Worldwide on your computer").setBeepEnabled(false).setBarcodeImageEnabled(false).setOrientationLocked(false);
+            try{startActivityForResult(options.createScanIntent(MainActivity.this),12);}catch(Exception error){pendingScanId=null;fail(id,new IOException("Couldn’t open the camera. You can enter your computer address instead."));}
+        });}
+        @JavascriptInterface public void pairQr(String id,String value){int expected=generation;executor.execute(()->{try{reply(id,pair(value,expected));}catch(Exception error){fail(id,error);}});}
         @JavascriptInterface public void configure(String id,String address){executor.execute(()->{try{
             String origin=normalize(address);Result health=network(origin,"/api/health","GET",new JSONObject(),new byte[0],"",-1);
             JSONObject data=new JSONObject(new String(health.bytes,StandardCharsets.UTF_8));String app=data.optString("app");
@@ -175,7 +223,23 @@ public class MainActivity extends Activity {
             reply(id,new JSONObject().put("status",result.status).put("headers",new JSONObject().put("Content-Type",result.mime).put("X-Elsewhere-Offline",result.offline?"1":"0")).put("body",Base64.encodeToString(result.bytes,Base64.NO_WRAP)));
         }catch(Exception error){fail(id,error);}});}
         @JavascriptInterface public String read(String key){return Arrays.asList("account","offline-state").contains(key)?prefs.getString(key,""):"";}
-        @JavascriptInterface public void store(String key,String value){if(Arrays.asList("account","offline-state").contains(key)&&value.length()<10000)prefs.edit().putString(key,value).apply();}
+        @JavascriptInterface public void store(String key,String value){synchronized(MainActivity.this){
+            if(!Arrays.asList("account","offline-state").contains(key)||value.length()>=10000||prefs.getString("cookie","").isEmpty())return;
+            try{
+                JSONObject data=new JSONObject(value);
+                if(key.equals("account")){
+                    String email=data.getJSONObject("account").getString("email"),existing=prefs.getString("account","");
+                    if(email.isEmpty()||email.length()>254)return;
+                    if(!existing.isEmpty()&&!new JSONObject(existing).getJSONObject("account").getString("email").equals(email))return;
+                }else if(data.optBoolean("ready")){
+                    Result snapshot=cached("/api/atlas");if(snapshot==null)return;
+                    JSONArray photos=new JSONObject(new String(snapshot.bytes,StandardCharsets.UTF_8)).getJSONArray("photos");
+                    if(photos.length()!=data.optInt("total",-1)||photos.length()!=data.optInt("saved",-1))return;
+                    for(int i=0;i<photos.length();i++){String photo=photoKey("/api/photos/"+photos.getJSONObject(i).getString("id"));if(!new File(album,photo+".photo").isFile()||!new File(album,photo+".mime").isFile())return;}
+                }
+                prefs.edit().putString(key,value).apply();
+            }catch(Exception ignored){}
+        }}
         @JavascriptInterface public void clearAlbum(){MainActivity.this.clearAlbum();}
         @JavascriptInterface public void syncAlbum(String id,String value){int expected=generation;executor.execute(()->{try{
             JSONObject data=new JSONObject(value);JSONArray photos=data.getJSONArray("photos");Set<String> keep=new HashSet<>(Arrays.asList("atlas.json"));
@@ -198,6 +262,9 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent intent){
         super.onActivityResult(request,result,intent);
+        if(request==12&&pendingScanId!=null){String id=pendingScanId;pendingScanId=null;try{
+            reply(id,new JSONObject().put("value",scanContents(result,intent)));
+        }catch(Exception error){fail(id,error);}return;}
         if(request==10&&fileCallback!=null){List<Uri> files=new ArrayList<>();if(result==RESULT_OK&&intent!=null){if(intent.getClipData()!=null){for(int i=0;i<intent.getClipData().getItemCount();i++)files.add(intent.getClipData().getItemAt(i).getUri());}else if(intent.getData()!=null)files.add(intent.getData());}fileCallback.onReceiveValue(files.isEmpty()?null:files.toArray(new Uri[0]));fileCallback=null;}
         if(request==11&&pendingSave!=null){byte[] data=pendingSave;String id=pendingSaveId;pendingSave=null;pendingSaveId=null;
             if(result!=RESULT_OK||intent==null||intent.getData()==null){fail(id,new IOException("Save cancelled."));return;}Uri uri=intent.getData();executor.execute(()->{try(OutputStream stream=getContentResolver().openOutputStream(uri)){if(stream==null)throw new IOException("Couldn’t open that location.");stream.write(data);reply(id,new JSONObject().put("value",true));}catch(Exception error){fail(id,error);}});

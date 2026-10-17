@@ -1,12 +1,14 @@
 /** The Android bridge is exposed only to the app's bundled, trusted origin. */
-type Bridge={connection():string;request(id:string,request:string):void;configure(id:string,url:string):void;read(key:string):string;store(key:string,value:string):void;clearAlbum():void;syncAlbum(id:string,album:string):void;saveFile(id:string,name:string,mime:string,base64:string):void};
+type Bridge={connection():string;request(id:string,request:string):void;configure(id:string,url:string):void;read(key:string):string;store(key:string,value:string):void;clearAlbum():void;syncAlbum(id:string,album:string):void;saveFile(id:string,name:string,mime:string,base64:string):void;scanQr(id:string):void;pairQr(id:string,payload:string):void;takePairLink():string};
 type NativeReply={status?:number;headers?:Record<string,string>;body?:string;error?:string;value?:unknown};
 declare global {interface Window{WorldwideNative?:Bridge;worldwideNativeReply?:(id:string,response:NativeReply)=>void;worldwideNativeProgress?:(saved:number,total:number)=>void}}
 const callbacks=new Map<string,{resolve:(reply:NativeReply)=>void;reject:(error:Error)=>void}>();
+// Java operations can outlive a page reload; replies must belong to this page.
+const pageId=crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`;
 let installed=false,sequence=0;
 export function isNativeApp(){return !!window.WorldwideNative}
 export function nativeConnection(){return window.WorldwideNative?.connection()||''}
-function invoke(send:(bridge:Bridge,id:string)=>void){return new Promise<NativeReply>((resolve,reject)=>{const bridge=window.WorldwideNative;if(!bridge){reject(new Error('This action needs the Android app.'));return}const id=String(++sequence);callbacks.set(id,{resolve,reject});try{send(bridge,id)}catch(error){callbacks.delete(id);reject(error)}})}
+function invoke(send:(bridge:Bridge,id:string)=>void){return new Promise<NativeReply>((resolve,reject)=>{const bridge=window.WorldwideNative;if(!bridge){reject(new Error('This action needs the Android app.'));return}const id=`${pageId}:${++sequence}`;callbacks.set(id,{resolve,reject});try{send(bridge,id)}catch(error){callbacks.delete(id);reject(error)}})}
 function base64(bytes:Uint8Array){let result='';for(let i=0;i<bytes.length;i+=32768)result+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(result)}
 export function installNativeTransport(){
  if(installed||!isNativeApp())return;installed=true;
@@ -25,6 +27,11 @@ export function installNativeTransport(){
  };
 }
 export async function configureNativeConnection(url:string){await invoke((bridge,id)=>bridge.configure(id,url))}
+/** Empty means the scanner was cancelled; camera frames stay on the phone. */
+export async function scanNativeQr(){const result=await invoke((bridge,id)=>bridge.scanQr(id));return typeof result.value==='string'?result.value:''}
+/** The native transaction keeps the current session and album until the new QR succeeds. */
+export async function pairNativeQr(payload:string){await invoke((bridge,id)=>bridge.pairQr(id,payload))}
+export function takeNativePairLink(){return window.WorldwideNative?.takePairLink()||''}
 export function readNativeValue<T>(key:string):T|null{const value=window.WorldwideNative?.read(key);if(!value)return null;try{return JSON.parse(value) as T}catch{return null}}
 export function storeNativeValue(key:string,value:unknown){window.WorldwideNative?.store(key,JSON.stringify(value))}
 export function clearNativeAlbum(){window.WorldwideNative?.clearAlbum()}
