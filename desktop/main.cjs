@@ -30,7 +30,7 @@ async function chooseAlbum(){
  writeFileSync(settingsPath(),JSON.stringify({albumDirectory:folder}),{mode:0o600});app.relaunch();app.quit();
 }
 function createWindow(){
- window=new BrowserWindow({width:1440,height:920,minWidth:820,minHeight:540,title:'Worldwide',backgroundColor:'#dbe9ec',autoHideMenuBar:process.platform!=='darwin',webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
+ window=new BrowserWindow({width:1440,height:920,minWidth:820,minHeight:540,title:'Worldwide',icon:join(runtime,'dist/icon-512.png'),backgroundColor:'#dbe9ec',autoHideMenuBar:process.platform!=='darwin',webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==origin)event.preventDefault()});
  window.loadURL(origin);

@@ -4,7 +4,7 @@ The installed desktop app includes its own server and database runtime. Users do
 
 ## Windows
 
-Run `Worldwide-Setup-0.1.0-x64.exe` to install, or `Worldwide-Portable-0.1.0-x64.exe` to run without an installer. The builds are currently unsigned; Windows may ask for confirmation because there is no publisher certificate. No cloud service is used.
+Run `Worldwide-Setup-0.1.1-x64.exe` to install, or `Worldwide-Portable-0.1.1-x64.exe` to run without an installer. The builds are currently unsigned; Windows may ask for confirmation because there is no publisher certificate. No cloud service is used.
 
 Create the private account on the computer, then open **Your album** to find the computer's local address. Enter that address in the Android app and sign in with the same email and password. The computer may show a Windows Firewall prompt; allow access on your private/home network so your phone can reach it. The computer and phone need a connection to sync; the downloaded phone album is viewable offline.
 
