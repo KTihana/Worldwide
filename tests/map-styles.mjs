@@ -13,3 +13,5 @@ for(const style of catalog){
 }
 assert.equal(signatures.size,catalog.length,'Each choice produces a different projection');
 console.log('PASS: 11 distinct projections preserve every country and fit the map/export canvas.');
+
+const antarctica=read('projections/natural-earth').ATA;assert.ok(!antarctica.outline.includes(',565'),'South-pole closing edge is not a coastline');

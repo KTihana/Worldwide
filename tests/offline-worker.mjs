@@ -8,10 +8,11 @@ const caches={
  async open(name){if(!stores.has(name))stores.set(name,new Map());const store=stores.get(name);return {async match(input){return store.get(new URL(typeof input==='string'?input:input.url,origin).href)?.clone()},async put(input,response){store.set(new URL(typeof input==='string'?input:input.url,origin).href,response.clone())}}},
  async delete(name){return stores.delete(name)},
 };
-let online=true,branding='old-logo';
+let online=true,branding='old-logo',map='old-map';
 async function fetchNetwork(request){
  if(!online)throw new TypeError('Network unavailable');
  const path=new URL(typeof request==='string'?request:request.url,origin).pathname;
+ if(path==='/basemaps/world-natural-earth.webp')return new Response(map);
  if(path==='/favicon.svg')return new Response(branding,{headers:{'Content-Type':'image/svg+xml'}});
  if(path==='/api/atlas')return Response.json({visits:[{countryId:'HRV',visited:1}],photos:[{id:'photo-1'}]});
  if(path==='/api/photos/photo-1')return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'image/webp'}});
@@ -20,8 +21,8 @@ async function fetchNetwork(request){
 }
 const self={location:{origin},addEventListener(type,handler){handlers[type]=handler},skipWaiting:async()=>{},clients:{claim:async()=>{}}};
 runInNewContext(await readFile(resolve(import.meta.dirname,'../public/sw.js'),'utf8'),{self,caches,fetch:fetchNetwork,URL,Response,Request,Headers,AbortController,setTimeout,clearTimeout});
-async function visit(path,mode='cors'){
- const request=new Request(origin+path);
+async function visit(path,mode='cors',cache='default'){
+ const request=new Request(origin+path,{cache});
  Object.defineProperty(request,'mode',{value:mode});
  let answer;handlers.fetch({request,respondWith(value){answer=value}});
  return answer?await answer:null;
@@ -33,7 +34,10 @@ assert.equal((await visit('/')).status,200);
 assert.equal(await(await visit('/favicon.svg')).text(),'old-logo');
 branding='current-logo';
 assert.equal(await(await visit('/favicon.svg')).text(),'current-logo','Online icon changes replace old cached artwork');
+assert.equal(await(await visit('/basemaps/world-natural-earth.webp')).text(),'old-map');
+map='updated-map';assert.equal(await(await visit('/basemaps/world-natural-earth.webp','cors','no-store')).text(),'updated-map','New offline bundle replaces stable map asset URLs');
 online=false;
+assert.equal(await(await visit('/basemaps/world-natural-earth.webp')).text(),'updated-map','Updated map remains available offline');
 assert.equal(await(await visit('/favicon.svg')).text(),'current-logo','Current icon stays available offline');
 assert.equal(await(await visit('/favicon.svg?v=0.1.1')).text(),'current-logo','Versioned icons can use the offline shell copy');
 const offlineAtlas=await visit('/api/atlas');assert.equal(offlineAtlas.headers.get('X-Elsewhere-Offline'),'1');assert.equal((await offlineAtlas.json()).photos[0].id,'photo-1');

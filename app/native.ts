@@ -1,5 +1,5 @@
 /** The Android bridge is exposed only to the app's bundled, trusted origin. */
-type Bridge={connection():string;request(id:string,request:string):void;configure(id:string,url:string):void;read(key:string):string;store(key:string,value:string):void;clearAlbum():void;syncAlbum(id:string,album:string):void;saveFile(id:string,name:string,mime:string,base64:string):void;scanQr(id:string):void;pairQr(id:string,payload:string):void;takePairLink():string};
+type Bridge={connection():string;request(id:string,request:string):void;configure(id:string,url:string):void;read(key:string):string;store(key:string,value:string):void;clearAlbum():void;syncAlbum(id:string,album:string):void;saveFile(id:string,name:string,mime:string,base64:string):void;scanQr(id:string):void;pairQr(id:string,payload:string):void;takePairLink():string;checkUpdate?(id:string):void;installUpdate?(id:string):void};
 type NativeReply={status?:number;headers?:Record<string,string>;body?:string;error?:string;value?:unknown};
 declare global {interface Window{WorldwideNative?:Bridge;worldwideNativeReply?:(id:string,response:NativeReply)=>void;worldwideNativeProgress?:(saved:number,total:number)=>void}}
 const callbacks=new Map<string,{resolve:(reply:NativeReply)=>void;reject:(error:Error)=>void}>();
@@ -8,6 +8,10 @@ const pageId=crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`;
 let installed=false,sequence=0;
 export function isNativeApp(){return !!window.WorldwideNative}
 export function nativeConnection(){return window.WorldwideNative?.connection()||''}
+export function nativeUpdateAvailable(){return typeof window.WorldwideNative?.checkUpdate==='function'&&typeof window.WorldwideNative?.installUpdate==='function'}
+export type NativeUpdateInfo={version:string;available:boolean;installedVersion:string};
+export async function checkNativeUpdate(){const result=await invoke((bridge,id)=>{if(!bridge.checkUpdate)throw new Error('Install the current Android app once to enable in-app updates.');bridge.checkUpdate(id)});return result.value as NativeUpdateInfo}
+export async function installNativeUpdate(){const result=await invoke((bridge,id)=>{if(!bridge.installUpdate)throw new Error('Install the current Android app once to enable in-app updates.');bridge.installUpdate(id)});return result.value as {status:'installer-opened'|'permission-required'}}
 function invoke(send:(bridge:Bridge,id:string)=>void){return new Promise<NativeReply>((resolve,reject)=>{const bridge=window.WorldwideNative;if(!bridge){reject(new Error('This action needs the Android app.'));return}const id=`${pageId}:${++sequence}`;callbacks.set(id,{resolve,reject});try{send(bridge,id)}catch(error){callbacks.delete(id);reject(error)}})}
 function base64(bytes:Uint8Array){let result='';for(let i=0;i<bytes.length;i+=32768)result+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(result)}
 export function installNativeTransport(){

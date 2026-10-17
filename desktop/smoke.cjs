@@ -14,5 +14,6 @@ app.whenReady().then(async()=>{try{
  const response=await fetch(origin+'/api/atlas',{headers:{Cookie:cookie}});if(response.status!==200)throw new Error('Album unavailable');
  const qr=await fetch(origin+'/api/auth/pair-start',{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({serverUrl:origin})});if(qr.status!==200)throw new Error('Bundled QR generation failed '+await qr.text());const pairing=await qr.json();if(!pairing.qr.includes('<svg'))throw new Error('Missing QR image');
  if((await fetch(origin+'/')).status!==200)throw new Error('Bundled frontend unavailable');
- console.log('PASS: bundled Electron utility process, SQLite, private account, authenticated album, QR generation, and frontend assets.');
+ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Graceful utility shutdown timed out')),10000);child.once('exit',code=>{clearTimeout(timer);code===0?resolve():reject(new Error('Graceful utility shutdown exited '+code))});child.postMessage({type:'worldwide:shutdown'})});child=null;
+ console.log('PASS: bundled Electron utility process, SQLite, private account, authenticated album, QR generation, frontend assets, and graceful update shutdown.');
  }catch(error){console.error(error);process.exitCode=1}finally{if(child){await new Promise(resolve=>{child.once('exit',resolve);child.kill()})}rmSync(temporary,{recursive:true,force:true});app.exit(process.exitCode||0)}});

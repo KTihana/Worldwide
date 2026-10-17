@@ -26,3 +26,11 @@ Forgot your password? Choose **Forgot password?** on this computer and set a new
 The build copies only `dist`, the API/server code, public country/style metadata, and database migrations into the runtime. `data/` is excluded. Electron's Node runtime supplies SQLite; no separate database installation is required.
 
 Production distribution can add publisher signing credentials to Electron Builder. Signing credentials are not included in the project.
+
+## Updates
+
+Open **Your album → App updates → Check for updates → Install update**. Worldwide downloads the official Windows installer, checks its SHA-256 digest, finishes current saves, then installs and reopens. The album, photos, account, and selected album folder stay in place. Do not uninstall to update. A portable copy is upgraded by installing the regular desktop app, which uses the same saved album.
+
+Older versions need one manual installation of the new version to gain this update button. New releases must include `Worldwide-Windows-Setup.exe` in the public `KTihana/Worldwide` GitHub release, with a stable `vX.Y.Z` tag and GitHub's asset digest. The app rejects older versions, unexpected download addresses, incomplete downloads, and checksum mismatches. Updates use `%APPDATA%\Worldwide\updates`; album data is never staged in the installation folder.
+
+Run `node tests/desktop-updates.mjs` to verify release checks and preservation of SQLite, settings, and exact photo bytes through successful and failed update downloads. Installer execution still needs validation on Windows; downloading and data preservation are tested independently of an actual Windows installation.

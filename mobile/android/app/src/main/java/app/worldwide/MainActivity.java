@@ -47,10 +47,13 @@ public class MainActivity extends Activity {
     private String pendingSaveId;
     private String pendingScanId;
     private volatile String pendingPairLink="";
+    private AndroidUpdater updater;
+    private final java.util.concurrent.atomic.AtomicBoolean updateBusy=new java.util.concurrent.atomic.AtomicBoolean();
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         prefs=getSharedPreferences("worldwide",MODE_PRIVATE);
+        updater=new AndroidUpdater(this,(percent,status)->runOnUiThread(()->{if(web!=null)try{JSONObject detail=new JSONObject().put("progress",percent).put("status",status);web.evaluateJavascript("window.dispatchEvent(new CustomEvent('worldwide-update-progress',{detail:"+detail+"}))",null);}catch(Exception ignored){}}));
         album=new File(getFilesDir(),"album");album.mkdirs();
         receivePairLink(getIntent());
         web=new WebView(this);web.setBackgroundColor(Color.rgb(237,242,239));
@@ -66,7 +69,7 @@ public class MainActivity extends Activity {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         web.addJavascriptInterface(new Bridge(),"WorldwideNative");
         web.setWebViewClient(new WebViewClient(){
-            @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){String path=request.getUrl().getPath();return !trusted(request.getUrl())||request.isForMainFrame()&&!("/".equals(path)||"/index.html".equals(path));}
+            @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){String path=request.getUrl().getPath();if(request.isForMainFrame()&&"https://github.com/KTihana/Worldwide/releases/latest/download/Worldwide-Android.apk".equals(request.getUrl().toString())){try{startActivity(new Intent(Intent.ACTION_VIEW,request.getUrl()));}catch(Exception ignored){}return true;}return !trusted(request.getUrl())||request.isForMainFrame()&&!("/".equals(path)||"/index.html".equals(path));}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 if(!trusted(request.getUrl()))return resource(403,"text/plain","External navigation is disabled".getBytes(StandardCharsets.UTF_8),false);
                 String path=request.getUrl().getPath();
@@ -203,6 +206,11 @@ public class MainActivity extends Activity {
         ScanIntentResult scan=ScanIntentResult.parseActivityResult(result,intent);return scan.getContents()==null?"":scan.getContents();
     }
     private class Bridge {
+        @JavascriptInterface public void checkUpdate(String id){executor.execute(()->{try{reply(id,new JSONObject().put("value",updater.check()));}catch(Exception error){fail(id,error);}});}
+        @JavascriptInterface public void installUpdate(String id){
+            if(!updateBusy.compareAndSet(false,true)){fail(id,new IOException("An update is already being prepared."));return;}
+            executor.execute(()->{try{File file=updater.prepare();runOnUiThread(()->{try{if(isFinishing()||isDestroyed())throw new IOException("Open Worldwide again to install the update.");reply(id,new JSONObject().put("value",new JSONObject().put("status",AndroidUpdater.install(MainActivity.this,file))));}catch(Exception error){fail(id,error);}finally{updateBusy.set(false);}});}catch(Exception error){updateBusy.set(false);fail(id,error);}});
+        }
         @JavascriptInterface public String connection(){return prefs.getString("server","");}
         @JavascriptInterface public String takePairLink(){String value=pendingPairLink;pendingPairLink="";return value;}
         @JavascriptInterface public void scanQr(String id){runOnUiThread(()->{if(pendingScanId!=null){fail(id,new IOException("The camera is already open."));return;}pendingScanId=id;

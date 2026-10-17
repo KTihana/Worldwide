@@ -13,9 +13,10 @@ export async function exportMap(shapes:ExportShape[],visits:Record<string,{visit
  const terrain=await createImageBitmap(await terrainResponse.blob());try{const land=new Path2D();for(const shape of shapes)land.addPath(new Path2D(shape.path));ctx.save();ctx.clip(land);ctx.drawImage(terrain,0,0,1200,590);ctx.restore()}finally{terrain.close()}
  const photoById=Object.fromEntries(photos.map(p=>[p.id,p]));let done=0,total=shapes.filter(c=>visits[c.id]?.visited&&visits[c.id]?.coverId).length;
  for(const shape of shapes){const visit=visits[shape.id],path=new Path2D(shape.path);
+  if(shape.id==='ATA'){ctx.fillStyle='#f5f7f6';ctx.fill(path)}
   if(visit?.visited&&visit.coverId){onProgress(`Preparing photo ${++done} of ${total}…`);const photo=photoById[visit.coverId];if(!photo)throw new Error(`The cover photo for ${shape.name} could not be found.`);const response=await fetch(`/api/photos/${photo.id}`);if(!response.ok)throw new Error(`The photo for ${shape.name} could not be loaded.`);const image=await createImageBitmap(await response.blob());try{const p=photoPlacement(shape.bounds,image.width/image.height,photo);ctx.save();ctx.clip(path);ctx.drawImage(image,p.x,p.y,p.width,p.height);ctx.restore()}finally{image.close()}}
   if(visit?.visited&&!visit.coverId){ctx.save();ctx.fillStyle=VISITED_TINT;ctx.globalAlpha=VISITED_OPACITY;ctx.fill(path);ctx.restore()}
-  ctx.strokeStyle=visit?.visited?'#567062':'#87938a';ctx.lineWidth=visit?.visited?.65:.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke(new Path2D(shape.outline??shape.path));
+  ctx.strokeStyle=shape.id==='ATA'?'#a8b5b8':visit?.visited?'#567062':'#87938a';ctx.lineWidth=visit?.visited?.65:.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke(new Path2D(shape.outline??shape.path));
  }
  onProgress('Saving image…');
  return new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('The image could not be created.')),'image/png'));

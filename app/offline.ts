@@ -60,7 +60,7 @@ async function perform(data:Album){
   const manifest=await manifestResponse.json() as {version:string;assets:string[]};
   const marker=await shell.match(READY);
   if((await marker?.text())!==manifest.version){
-   await workers(manifest.assets,5,asset=>download(shell,asset,asset==='/'));
+   await workers(manifest.assets,5,asset=>download(shell,asset,!asset.startsWith('/assets/')));
    await shell.put(READY,new Response(manifest.version));
    const keep=new Set([...manifest.assets,READY]);
    for(const request of await shell.keys())if(!keep.has(new URL(request.url).pathname))await shell.delete(request);

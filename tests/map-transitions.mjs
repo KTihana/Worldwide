@@ -14,15 +14,8 @@ assert.equal(prepareMapImage('/new.webp'),prepareMapImage('/new.webp'),'Decoded 
 const failed=transitionMap(()=>scene='fallback','/missing.webp');
 pending.get('/missing.webp').reject(new Error('missing'));await failed;
 assert.equal(scene,'fallback','An unavailable image does not trap navigation');
-let fadeCount=0;
-document.querySelectorAll=()=>[{animate(){fadeCount++;return {finished:Promise.resolve(),cancel(){}}}}];
-await transitionMap(()=>scene='faded');assert.equal(scene,'faded');assert.equal(fadeCount,2,'Embedded browser fades out and back in');
-let skipped=0;
-document.startViewTransition=update=>({finished:Promise.resolve().then(update),skipTransition(){skipped++}});
-const old=transitionMap(()=>scene='old');
-const next=transitionMap(()=>scene='latest');
-await Promise.all([old,next]);
-assert.equal(scene,'latest');assert.equal(skipped,1,'Interrupted transitions are cancelled');
+let snapshots=0;document.startViewTransition=()=>{snapshots++;throw new Error('Do not snapshot the whole map')};
+await transitionMap(()=>scene='immediate');assert.equal(scene,'immediate');assert.equal(snapshots,0,'Controls do not create full-screen snapshots');
 matchMedia=()=>({matches:true});
 await transitionMap(()=>scene='reduced');assert.equal(scene,'reduced','Reduced motion updates without animation');
 console.log('PASS: map navigation races, image caching/failure, interrupted transitions, and reduced motion.');

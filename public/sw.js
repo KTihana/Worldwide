@@ -19,7 +19,7 @@ self.addEventListener('fetch',event=>{
   const cache=await caches.open(SHELL);
   const key=request.mode==='navigate'?'/':request;
   const branding=path==='/favicon.svg'||path==='/manifest.webmanifest'||/^\/icon-\d+\.png$/.test(path);
-  if(request.mode!=='navigate'&&!branding){const saved=await cache.match(key);if(saved)return saved}
+  if(request.mode!=='navigate'&&!branding&&request.cache!=='no-store'){const saved=await cache.match(key);if(saved)return saved}
   try{const response=request.mode==='navigate'||branding?await network(request):await fetch(request);if(response.ok)await cache.put(key,response.clone()).catch(()=>{});return response}
   catch{return await cache.match(key)||(branding&&await cache.match(path))||new Response('Offline copy unavailable.',{status:503})}
  })());

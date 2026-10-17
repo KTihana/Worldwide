@@ -5,6 +5,8 @@ import {extname,resolve,sep} from 'node:path';
 import {spawn} from 'node:child_process';
 import {networkInterfaces} from 'node:os';
 import {authRoute} from './auth.ts';
+import {reorderPhotos} from './photo-order.ts';
+import {importPhoto} from './photo-import.ts';
 import {savePreferences} from './preferences.ts';
 import {db,dataDirectory,projectRoot} from './storage.ts';
 import {ApiError,errorResponse} from '../app/api/shared.ts';
@@ -42,6 +44,8 @@ const handleRequest=async(req:IncomingMessage,res:ServerResponse)=>{
   else if(url.pathname==='/api/preferences'&&method==='PATCH')response=await savePreferences(request);
   else if(url.pathname==='/api/atlas'&&method==='GET')response=await atlas.GET(request);
   else if(/^\/api\/countries\/[^/]+$/.test(url.pathname)&&method==='PATCH')response=await countries.PATCH(request,{params:Promise.resolve({id:decodeURIComponent(url.pathname.split('/')[3])})});
+  else if(url.pathname==='/api/photos/import'&&method==='POST')response=await importPhoto(request);
+  else if(url.pathname==='/api/photos/order'&&method==='PATCH')response=await reorderPhotos(request);
   else if(url.pathname==='/api/photos'&&method==='POST')response=await photos.POST(request);
   else if(/^\/api\/photos\/[^/]+$/.test(url.pathname)&&['GET','PATCH','DELETE'].includes(method)){
    const params={params:Promise.resolve({id:decodeURIComponent(url.pathname.split('/')[3])})};
@@ -66,5 +70,13 @@ server.on('error',async(error:NodeJS.ErrnoException)=>{if(error.code==='EADDRINU
 secureServer?.on('error',error=>{console.error('Could not start phone HTTPS:',error.message);shutdown()});
 server.listen(port,process.env.ELSEWHERE_BIND||'0.0.0.0',()=>{const url=`http://127.0.0.1:${port}`;console.log(`Worldwide is running at ${url}\nLocal data: ${dataDirectory}\nPhone on the same Wi-Fi: ${lanAddresses.map(address=>tlsCert?`https://${address}:${tlsPort}`:`http://${address}:${port}`).join(', ')}`);if(process.argv.includes('--open')&&process.platform==='darwin')spawn('open',[url],{stdio:'ignore'}).unref()});
 secureServer?.listen(tlsPort,process.env.ELSEWHERE_BIND||'0.0.0.0');
-function shutdown(){secureServer?.close();server.close(()=>{db.close();process.exit(0)});server.closeIdleConnections()}
+let shuttingDown=false;
+function shutdown(){
+ if(shuttingDown)return;shuttingDown=true;
+ const listeners=[server,...(secureServer?[secureServer]:[])];
+ void Promise.all(listeners.map(listener=>new Promise<void>(resolve=>{listener.close(()=>resolve());listener.closeIdleConnections()}))).then(()=>{db.close();process.exit(0)});
+}
+// Electron asks the album to drain pending saves before an in-place update.
+const desktopParent=(process as typeof process&{parentPort?:{on:(event:'message',listener:(message:{data?:{type?:string}})=>void)=>void}}).parentPort;
+desktopParent?.on('message',message=>{if(message.data?.type==='worldwide:shutdown')shutdown()});
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);

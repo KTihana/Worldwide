@@ -1,7 +1,7 @@
 module.exports={
  appId:'app.worldwide.desktop',productName:'Worldwide',
  directories:{output:'releases/desktop'},
- files:['desktop/main.cjs','package.json'],
+ files:['desktop/main.cjs','desktop/preload.cjs','desktop/updates.cjs','package.json'],
  extraResources:[{from:'desktop-runtime',to:'runtime'}],
  asar:true,npmRebuild:false,
  mac:{target:['zip','dmg'],category:'public.app-category.travel',identity:null,icon:'public/icon-512.png'},

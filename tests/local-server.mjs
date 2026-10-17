@@ -29,6 +29,11 @@ try{
  const setup=await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)});assert.equal(setup.status,200);assert.ok(setup.cookie);assert.equal(Object.hasOwn(setup.data,'recoveryCode'),false,'New accounts need no recovery code');sessionCookie=setup.cookie;
  const connection=await request('/api/connection');assert.equal(connection.status,200);assert.ok(Array.isArray(connection.data.localUrls));assert.ok(connection.data.localUrls.every(url=>url.startsWith('http://')),'Native Android pairing provides LAN HTTP addresses');
  assert.equal((await request('/api/atlas')).data.visits.find(v=>v.countryId==='HRV').note,'Existing album','Account setup preserves legacy visits');
+ for(const [body,headers,status] of [[{url:'http://127.0.0.1/private'}, {},400],[{url:'http://[::ffff:127.0.0.1]/private'},{},400],[{url:'https://example.com/image.png'},{cookie:''},401],[{url:'https://example.com/image.png'},{origin:'https://untrusted.example'},403]]){
+  const imported=await post('/api/photos/import',body,headers);assert.equal(imported.status,status,'Image import requires account, same origin, and public URL');
+ }
+ const importError=await fetch(base+'/api/photos/import',{method:'POST',headers:{origin:base,cookie:sessionCookie,'Content-Type':'application/json'},body:'{"url":"file:///etc/passwd"}'});assert.equal(importError.headers.get('cache-control'),'no-store','Image import errors are not cached');
+
  assert.equal((await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)})).status,409,'Only the private owner can be created');
  const login=await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json',cookie:''},body:JSON.stringify(credentials)});assert.equal(login.status,200);const phoneCookie=login.cookie;assert.notEqual(phoneCookie,sessionCookie,'Each device gets its own session');
  assert.equal((await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,password:'incorrect password'})})).status,401);
@@ -43,6 +48,11 @@ try{
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jCmcAAAAASUVORK5CYII=','base64');
  const ids=[];
  for(let i=0;i<2;i++){const form=new FormData();form.set('countryId','NZL');form.set('photo',new Blob([bytes],{type:'image/png'}),'test.png');const result=await request('/api/photos',{method:'POST',body:form});assert.equal(result.status,201);ids.push(result.data.id)}
+ const reorder=order=>request('/api/photos/order',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({countryId:'NZL',ids:order})});
+ assert.equal((await reorder([ids[1],ids[0]])).status,200);
+ assert.deepEqual((await request('/api/atlas',{headers:{cookie:phoneCookie}})).data.photos.map(p=>p.id),[ids[1],ids[0]],'Reordered gallery syncs to another device');
+ assert.equal((await reorder([ids[0],ids[0]])).status,400,'Duplicate photos are rejected');
+ assert.equal((await reorder([ids[0]])).status,409,'Stale incomplete order cannot hide photos');
  assert.equal((await patch('NZL',{coverId:ids[1]})).status,200);
  assert.equal((await request(`/api/photos/${ids[1]}`,{headers:{cookie:''}})).status,401,'Photo bytes require authentication');
  assert.equal((await request('/api/countries/NZL',{method:'PATCH',headers:{cookie:'','Content-Type':'application/json'},body:'{"visited":false}'})).status,401,'Anonymous mutations are blocked');
@@ -59,7 +69,7 @@ try{
  await stop();await start();
  const data=(await request('/api/atlas')).data,visit=data.visits.find(v=>v.countryId==='NZL');
  assert.equal(visit.visited,1,'Visited status survives server restart');assert.equal(visit.note,'Saved on this computer');assert.equal(visit.visitDate,'2026-10-17');assert.equal(visit.coverId,ids[1]);
- assert.equal(data.photos.length,2,'Albums survive server restart');assert.equal(data.photos.find(p=>p.id===ids[1]).caption,'Local photo');
+ assert.equal(data.photos.length,2,'Albums survive server restart');assert.deepEqual(data.photos.map(p=>p.id),[ids[1],ids[0]],'Photo order survives restart');assert.equal(data.photos.find(p=>p.id===ids[1]).caption,'Local photo');
  const framed=data.photos.find(p=>p.id===ids[1]);assert.deepEqual([framed.cropX,framed.cropY,framed.cropZoom],[.4,-.6,2.3],'Photo position survives server restart');
  const downloaded=await request(`/api/photos/${ids[1]}`);assert.equal(downloaded.status,200);assert.deepEqual(Buffer.from(downloaded.data),bytes,'Photo bytes survive server restart');
  assert.equal((await request(`/api/photos/${ids[1]}`,{method:'DELETE'})).status,200);
