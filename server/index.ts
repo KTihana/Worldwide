@@ -1,10 +1,12 @@
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {createServer as createHttpsServer} from 'node:https';
-import {readFile,stat} from 'node:fs/promises';
-import {extname,resolve,sep} from 'node:path';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {staticFile} from './static-files.ts';
 import {spawn} from 'node:child_process';
 import {networkInterfaces} from 'node:os';
 import {authRoute} from './auth.ts';
+import {websiteVersion} from './website-version.ts';
 import {reorderPhotos} from './photo-order.ts';
 import {importPhoto} from './photo-import.ts';
 import {savePreferences} from './preferences.ts';
@@ -25,7 +27,6 @@ if(publicOrigin&&!publicOrigin.startsWith('https://'))throw new Error('ELSEWHERE
 const lanAddresses=Object.values(networkInterfaces()).flat().filter(a=>a&&a.family==='IPv4'&&!a.internal).map(a=>a!.address);
 const allowedHosts=new Set([port,...(tlsCert?[tlsPort]:[])].flatMap(value=>[`127.0.0.1:${value}`,`localhost:${value}`,...lanAddresses.map(address=>`${address}:${value}`)]).concat(publicOrigin?[new URL(publicOrigin).host]:[]));
 const staticRoot=resolve(projectRoot,'dist');
-const types:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'};
 const handleRequest=async(req:IncomingMessage,res:ServerResponse)=>{
  try{
   if(!allowedHosts.has(req.headers.host||''))throw new ApiError('This address is not allowed.',403);
@@ -40,6 +41,7 @@ const handleRequest=async(req:IncomingMessage,res:ServerResponse)=>{
   let response:Response;
   if(url.pathname==='/api/health'&&method==='GET')response=Response.json({app:'worldwide-local',storage:'local'});
   else if(url.pathname.startsWith('/api/auth/'))response=await authRoute(request,url.pathname.slice('/api/auth/'.length),localConnection,clientAddress,[...lanAddresses.map(address=>`http://${address}:${port}`),...(publicOrigin?[publicOrigin]:[]),`http://127.0.0.1:${port}`,`http://localhost:${port}`]);
+  else if(url.pathname==='/api/version'&&method==='GET'){const {requireAccount}=await import('./auth.ts');requireAccount(request);response=await websiteVersion(staticRoot)}
   else if(url.pathname==='/api/connection'&&method==='GET'){const {requireAccount}=await import('./auth.ts');requireAccount(request);response=Response.json({urls:publicOrigin?[publicOrigin]:lanAddresses.map(address=>tlsCert?`https://${address}:${tlsPort}`:`http://${address}:${port}`),localUrls:lanAddresses.map(address=>`http://${address}:${port}`)},{headers:{'Cache-Control':'no-store'}})}
   else if(url.pathname==='/api/preferences'&&method==='PATCH')response=await savePreferences(request);
   else if(url.pathname==='/api/atlas'&&method==='GET')response=await atlas.GET(request);
@@ -51,12 +53,8 @@ const handleRequest=async(req:IncomingMessage,res:ServerResponse)=>{
    const params={params:Promise.resolve({id:decodeURIComponent(url.pathname.split('/')[3])})};
    response=method==='GET'?await photo.GET(request,params):method==='PATCH'?await photo.PATCH(request,params):await photo.DELETE(request,params);
   }else if(url.pathname.startsWith('/api/'))response=Response.json({error:'Not found.'},{status:404});
-  else if(['GET','HEAD'].includes(method)){
-   const pathname=decodeURIComponent(url.pathname),path=resolve(staticRoot,'.'+(pathname==='/'?'/index.html':pathname));
-   if(!path.startsWith(staticRoot+sep))throw new ApiError('Not found.',404);
-   try{if(!(await stat(path)).isFile())throw new ApiError('Not found.',404);response=new Response(Uint8Array.from(await readFile(path)),{headers:{'Content-Type':types[extname(path)]||'application/octet-stream','Cache-Control':pathname.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-cache'}})}
-   catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')response=new Response('Not found. Run npm run build if this is a new checkout.',{status:404});else throw error}
-  }else response=new Response('Method not allowed.',{status:405});
+  else if(['GET','HEAD'].includes(method))response=await staticFile(request,staticRoot);
+  else response=new Response('Method not allowed.',{status:405});
   res.statusCode=response.status;
   response.headers.forEach((value,key)=>res.setHeader(key,value));
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','no-referrer');
@@ -68,7 +66,7 @@ const server=createServer(handleRequest);
 const secureServer=tlsCert&&tlsKey?createHttpsServer({cert:await readFile(tlsCert),key:await readFile(tlsKey)},handleRequest):null;
 server.on('error',async(error:NodeJS.ErrnoException)=>{if(error.code==='EADDRINUSE'&&process.argv.includes('--open')){try{const response=await fetch(`http://127.0.0.1:${port}/api/health`);const health=await response.json() as {app?:string};if(['worldwide-local','elsewhere-local'].includes(health.app||'')){if(process.platform==='darwin')spawn('open',[`http://127.0.0.1:${port}`],{stdio:'ignore'}).unref();console.log(`Worldwide is already running at http://127.0.0.1:${port}`);db.close();process.exit(0)}}catch{}}console.error('Could not start Worldwide:',error.message);db.close();process.exit(1)});
 secureServer?.on('error',error=>{console.error('Could not start phone HTTPS:',error.message);shutdown()});
-server.listen(port,process.env.ELSEWHERE_BIND||'0.0.0.0',()=>{const url=`http://127.0.0.1:${port}`;console.log(`Worldwide is running at ${url}\nLocal data: ${dataDirectory}\nPhone on the same Wi-Fi: ${lanAddresses.map(address=>tlsCert?`https://${address}:${tlsPort}`:`http://${address}:${port}`).join(', ')}`);if(process.argv.includes('--open')&&process.platform==='darwin')spawn('open',[url],{stdio:'ignore'}).unref()});
+server.listen(port,process.env.ELSEWHERE_BIND||'0.0.0.0',()=>{const url=`http://127.0.0.1:${port}`;console.log(`Worldwide is running at ${url}\nLocal data: ${dataDirectory}\nPhone on the same Wi-Fi: ${lanAddresses.map(address=>`http://${address}:${port}`).join(', ')}`);if(process.argv.includes('--open')&&process.platform==='darwin')spawn('open',[url],{stdio:'ignore'}).unref()});
 secureServer?.listen(tlsPort,process.env.ELSEWHERE_BIND||'0.0.0.0');
 let shuttingDown=false;
 function shutdown(){

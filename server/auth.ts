@@ -71,8 +71,11 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   const accountId=requireAccount(request);
   if(!localConnection)throw new ApiError('Show the QR code on your computer.',403);
   if(typeof body.serverUrl!=='string'||!pairingOrigins.includes(body.serverUrl))throw new ApiError('Choose this computer’s Wi-Fi address.');
+  if(body.client!==undefined&&body.client!=='native'&&body.client!=='web')throw new ApiError('Choose a supported pairing method.');
   const token=randomBytes(32).toString('hex'),expiresAt=Date.now()+pairingLifetime;
-  const link=new URL('worldwide://pair');link.searchParams.set('server',body.serverUrl);link.searchParams.set('token',token);
+  const link=new URL(body.client==='web'?body.serverUrl:'worldwide://pair');
+  if(body.client==='web')link.hash='worldwide-pair='+token;
+  else{link.searchParams.set('server',body.serverUrl);link.searchParams.set('token',token);}
   const pairingUrl=link.href;
   const qr=await QRCode.toString(pairingUrl,{type:'svg',errorCorrectionLevel:'M',margin:4,width:240,color:{dark:'#273e34',light:'#ffffff'}});
   // Password resets and sign-out can happen while the QR renderer is working.

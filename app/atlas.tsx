@@ -1,10 +1,12 @@
 'use client';
-import {useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo, type ReactNode} from 'react';
+import {useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo} from 'react';
 import {Globe2,Images,Plus,Search,X,Check,ChevronLeft,ChevronRight,Minus,Maximize,Camera,LoaderCircle,Star,Trash2,CalendarDays,BookOpen,Download,ChevronDown,SlidersHorizontal,Map as MapIcon,UserRound,CloudCheck,CloudOff} from 'lucide-react';
 import countries from './data/countries.json';
 import mapStyles from './data/map-styles.json';
 import naturalEarthShapes from './data/projections/natural-earth.json';
 const projectionLoaders=import.meta.glob(['./data/projections/*.json','!./data/projections/natural-earth.json'],{import:'default'}) as Record<string,()=>Promise<Record<string,Shape>>>;
+import {Modal} from './modal';
+export {Modal} from './modal';
 import {RegionPicker} from './region-picker';
 import {PhotoGallery} from './photo-gallery';
 import {prepareImage} from './prepare-image';
@@ -16,7 +18,7 @@ import {PhotoPattern,PhotoEditor,type FramedPhoto} from './photo-tools';
 import type {PhotoFrame} from './photo-layout';
 import {exportMap} from './export-map';
 import {TerrainPattern,terrainUrl} from './terrain';
-import {syncOffline} from './offline';
+import {syncOffline,albumSignature} from './offline';
 import {isNativeApp,saveNativeFile} from './native';
 
 type Country=(typeof countries)[number];
@@ -46,29 +48,21 @@ async function api<T=Data>(path:string,options:RequestInit={}):Promise<T>{
  const mutation=!!options.method&&!['GET','HEAD'].includes(options.method);
  if(mutation&&lastAtlasOffline)throw new Error('Reconnect to your computer to make changes.');
  if(mutation){pendingMutations++;mutationVersion++}
+ const controller=path==='/api/atlas'?new AbortController():null,timer=controller?setTimeout(()=>controller.abort(),8000):null;
  try{
-  const response=await fetch(path,{...options,cache:'no-store',headers:{...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...options.headers}});
+  const response=await fetch(path,{...options,...(controller?{signal:controller.signal}:{}),cache:'no-store',headers:{...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...options.headers}});
   if(path==='/api/atlas')lastAtlasOffline=response.headers.get('X-Elsewhere-Offline')==='1';
   const data=await response.json() as T & {error?:string};
   if(response.status===401)window.dispatchEvent(new Event('album-session-expired'));
   if(!response.ok)throw new Error(data.error||'Something went wrong. Please try again.');return data;
- }finally{if(mutation){pendingMutations--;mutationVersion++}}
-}
-export function Modal({children,onClose,label,className=''}:{children:ReactNode;onClose:()=>void;label:string;className?:string}){
- const box=useRef<HTMLDivElement>(null);const closeRef=useRef(onClose);closeRef.current=onClose;
- useEffect(()=>{const previous=document.activeElement as HTMLElement;const old=document.body.style.overflow;document.body.style.overflow='hidden';
- const t=setTimeout(()=>box.current?.querySelector<HTMLElement>('[autofocus], input, button, a, textarea')?.focus(),30);
- const key=(e:KeyboardEvent)=>{const dialogs=document.querySelectorAll('[role="dialog"][aria-modal="true"]');if(dialogs[dialogs.length-1]!==box.current)return;if(e.key==='Escape'){e.stopPropagation();closeRef.current()}
- if(e.key==='Tab'){const els=Array.from(box.current?.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],input,textarea,select,[tabindex="0"]')||[]).filter(el=>el.getClientRects().length>0);const first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}};
- document.addEventListener('keydown',key);return()=>{clearTimeout(t);document.body.style.overflow=old;document.removeEventListener('keydown',key);previous?.focus()};},[]);
- return <div className={`modal-backdrop ${className}`} onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div ref={box} role="dialog" aria-modal="true" aria-label={label} className="modal-box">{children}</div></div>
+ }finally{if(timer)clearTimeout(timer);if(mutation){pendingMutations--;mutationVersion++}}
 }
 function CountryShape({country,cover,photo,className=''}:{country:Country;cover?:string|null;photo?:Photo;className?:string}){
  const shape=details[country.id]||(naturalEarthShapes as Record<string,Shape>)[country.id];const [x1,y1,x2,y2]=shape.bounds;const w=Math.max(x2-x1,2),h=Math.max(y2-y1,2);const id=`shape-${country.id}-${className.replace(/[^a-z]/g,'')}`;
  return <svg className={`country-shape ${className}`} viewBox={`${x1-w*.06} ${y1-h*.06} ${w*1.12} ${h*1.12}`} aria-hidden="true"><defs>{cover&&<PhotoPattern id={id} photo={photo||{id:cover}} bounds={shape.bounds}/>}</defs><path d={shape.path} fill={cover?`url(#${id})`:'currentColor'}/></svg>
 }
 export default function Atlas({onAccount}:{onAccount:()=>void}){
- const [syncError,setSyncError]=useState(false);const refreshSequence=useRef(0);
+ const [syncError,setSyncError]=useState(false);const refreshSequence=useRef(0),refreshing=useRef(0),syncFailures=useRef(0);
  const [data,setData]=useState<Data>({visits:[],photos:[]});const [loading,setLoading]=useState(true);const [loadError,setLoadError]=useState('');
  const [continent,setContinent]=useState<Continent>('World');
  const [stylesOpen,setStylesOpen]=useState(false),[mapStyle,setMapStyle]=useState('natural-earth'),[styleLoading,setStyleLoading]=useState(false),[styleError,setStyleError]=useState('');
@@ -84,31 +78,48 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
  const [selected,setSelected]=useState<string|null>(null);const [lightbox,setLightbox]=useState<Photo|null>(null);const [deleteId,setDeleteId]=useState<string|null>(null);
  const uploadLock=useRef(false);
  const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState('');const [notice,setNotice]=useState('');const [note,setNote]=useState('');const [date,setDate]=useState('');
- const [smoothCamera,setSmoothCamera]=useState(false);
+ const [smoothCamera,setSmoothCamera]=useState(false);const smoothRef=useRef(false);smoothRef.current=smoothCamera;
  const cameraCommand=useRef(0);
  const overviewCamera=useRef<{k:number;x:number;y:number}|null>(null);
  const selectedRef=useRef(selected);selectedRef.current=selected;
  const touchPoints=useRef(new Map<number,{x:number;y:number}>());
  const pinch=useRef<{distance:number;k:number;x:number;y:number;anchorX:number;anchorY:number}|null>(null);
  const [zoom,setZoom]=useState({k:1,x:0,y:0});const cameraRef=useRef(zoom);cameraRef.current=zoom;const [hover,setHover]=useState<{id:string;x:number;y:number}|null>(null);
- const gestureFrame=useRef(0),pendingCamera=useRef<typeof zoom|null>(null);
- const queueCamera=(camera:typeof zoom)=>{pendingCamera.current=camera;if(!gestureFrame.current)gestureFrame.current=requestAnimationFrame(()=>{gestureFrame.current=0;if(pendingCamera.current)setZoom(pendingCamera.current);pendingCamera.current=null})};
+ const gestureFrame=useRef(0),pendingCamera=useRef<typeof zoom|null>(null),gestureCommand=useRef(0);
+ const queueCamera=(camera:typeof zoom)=>{pendingCamera.current=camera;cameraRef.current=camera;gestureCommand.current=cameraCommand.current;if(!gestureFrame.current)gestureFrame.current=requestAnimationFrame(()=>{gestureFrame.current=0;if(pendingCamera.current&&gestureCommand.current===cameraCommand.current)setZoom(pendingCamera.current);pendingCamera.current=null})};
  useEffect(()=>()=>cancelAnimationFrame(gestureFrame.current),[]);
  const svg=useRef<SVGSVGElement>(null);const fileInput=useRef<HTMLInputElement>(null);const dragged=useRef(false);const drag=useRef<{x:number;y:number;ox:number;oy:number;id:number}|null>(null);
  const visits=useMemo(()=>Object.fromEntries(data.visits.map(v=>[v.countryId,v])),[data.visits]);
- const visited=data.visits.filter(v=>v.visited);const visitedIds=new Set(visited.map(v=>v.countryId));const withPhotos=new Set(data.photos.map(p=>p.countryId));
+ const visited=useMemo(()=>data.visits.filter(v=>v.visited),[data.visits]);const visitedIds=useMemo(()=>new Set(visited.map(v=>v.countryId)),[visited]);const withPhotos=useMemo(()=>new Set(data.photos.map(p=>p.countryId)),[data.photos]);
+ const photosById=useMemo(()=>new Map(data.photos.map(photo=>[photo.id,photo])),[data.photos]);
  const regionCountries=useMemo(()=>continent==='World'?countries:Object.keys(regions[continent].shapes).map(id=>byId[id]),[continent]);
  const mapShapes=useMemo(()=>selected?[{...byId[selected],...details[selected]}]:continent==='World'?projectedCountries:regionCountries.map(c=>({...c,...regions[continent].shapes[c.id]})),[selected,continent,regionCountries,projectedCountries]);
  const focused=useRef(false);focused.current=!!selected||continent!=='World';
- const selectedCountry=selected?byId[selected]:null;const selectedVisit=selected?visits[selected]:null;const selectedPhotos=data.photos.filter(p=>p.countryId===selected);
+ const selectedCountry=selected?byId[selected]:null;const selectedVisit=selected?visits[selected]:null;const selectedPhotos=useMemo(()=>data.photos.filter(p=>p.countryId===selected),[data.photos,selected]);
  const refresh=useCallback(async(silent=false)=>{
-  const request=++refreshSequence.current,version=mutationVersion;
-  try{const d=await api('/api/atlas');if(request!==refreshSequence.current||version!==mutationVersion||pendingMutations)return;setData(current=>JSON.stringify(current)===JSON.stringify(d)?current:d);setLoadError('');setSyncError(lastAtlasOffline);if(!lastAtlasOffline)syncOffline(d)}catch(e){setSyncError(true);if(!silent)setLoadError((e as Error).message)}finally{setLoading(false)}
+  if(silent&&refreshing.current)return;
+  refreshing.current++;const request=++refreshSequence.current,version=mutationVersion;
+  try{const d=await api('/api/atlas');if(request!==refreshSequence.current||version!==mutationVersion||pendingMutations)return;setData(current=>albumSignature(current)===albumSignature(d)?current:d);setLoadError('');setSyncError(lastAtlasOffline);syncFailures.current=lastAtlasOffline?Math.min(syncFailures.current+1,4):0;if(!lastAtlasOffline)syncOffline(d)}catch(e){if(request===refreshSequence.current){syncFailures.current=Math.min(syncFailures.current+1,4);setSyncError(true);if(!silent)setLoadError((e as Error).message)}}finally{refreshing.current--;setLoading(false)}
  },[]);
- useEffect(()=>{void refresh();const update=()=>{if(!document.hidden&&!pendingMutations)void refresh(true)};const timer=setInterval(update,5000);window.addEventListener('focus',update);window.addEventListener('online',update);document.addEventListener('visibilitychange',update);return()=>{clearInterval(timer);window.removeEventListener('focus',update);window.removeEventListener('online',update);document.removeEventListener('visibilitychange',update)}},[refresh]);
+ useEffect(()=>{
+  let timer:ReturnType<typeof setTimeout>,stopped=false;
+  const available=()=>!stopped&&!document.hidden&&navigator.onLine!==false;
+  const schedule=()=>{clearTimeout(timer);if(available())timer=setTimeout(()=>void poll(),Math.min(60000,5000*2**syncFailures.current))};
+  const poll=async()=>{if(!available())return;if(!pendingMutations)await refresh(true);schedule()};
+  const wake=()=>{clearTimeout(timer);if(available())void poll()};
+  const offline=()=>{clearTimeout(timer);lastAtlasOffline=true;setSyncError(true)};
+  // Initial access must still read a saved album when already offline.
+  void refresh().finally(schedule);
+  window.addEventListener('focus',wake);window.addEventListener('online',wake);window.addEventListener('offline',offline);document.addEventListener('visibilitychange',wake);
+  return()=>{stopped=true;refreshSequence.current++;clearTimeout(timer);window.removeEventListener('focus',wake);window.removeEventListener('online',wake);window.removeEventListener('offline',offline);document.removeEventListener('visibilitychange',wake)};
+ },[refresh]);
  useEffect(()=>{if(notice){const t=setTimeout(()=>setNotice(''),4200);return()=>clearTimeout(t)}},[notice]);
  const previousNote=useRef({id:selected,value:selectedVisit?.note||''});
  useEffect(()=>{const next=selectedVisit?.note||'',previous=previousNote.current;setNote(draft=>previous.id!==selected||draft===previous.value?next:draft);previousNote.current={id:selected,value:next};setDate(selectedVisit?.visitDate||'')},[selected,selectedVisit?.note,selectedVisit?.visitDate]);
+ useEffect(()=>{
+  const protect=(event:Event)=>{if(pendingMutations||busy||uploadLock.current||savingVisits.size||note!==(selectedVisit?.note||'')||cropId||lightbox||deleteId||exporting||styleLoading)event.preventDefault()};
+  window.addEventListener('worldwide-before-refresh',protect);return()=>window.removeEventListener('worldwide-before-refresh',protect);
+ },[busy,savingVisits,note,selectedVisit?.note,cropId,lightbox,deleteId,exporting,styleLoading]);
  const notify=(s:string)=>setNotice(s);
  const searchInput=useRef<HTMLInputElement>(null);const suppressSearchFocus=useRef(false);
  const openCountry=useCallback((id:string)=>{if(uploadLock.current)return;void transitionMap(()=>{if(!selectedRef.current)overviewCamera.current=cameraRef.current;if(document.activeElement===searchInput.current)suppressSearchFocus.current=true;setFinder(false);setQuery('');setView('map');setSelected(id);setHover(null)},terrainUrl(`country:${id}`,'natural-earth'),prepareCountry(id)).catch(error=>setNotice(error.message))},[]);
@@ -128,10 +139,11 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
   const box={x:600-w/2,y:295-h/2,width:w,height:h};boxRef.current=box;setMapBox(box);setZoom(z=>{const k=Math.max(focused.current?.15:Math.min(1,w/1200,h/590),z.k);return clampZoom(k,600+(z.x-600)*k/z.k,295+(z.y-295)*k/z.k)});
  });observer.observe(element);return()=>observer.disconnect()},[clampZoom]);
  const freezeCamera=useCallback(()=>{
+  if(!smoothRef.current)return pendingCamera.current||cameraRef.current;
   const element=svg.current?.querySelector<SVGGElement>('.map-geography');
   const matrix=element?new DOMMatrix(getComputedStyle(element).transform):null;
-  const current=matrix?{k:matrix.a,x:matrix.e,y:matrix.f}:null;
-  setSmoothCamera(false);if(current)setZoom(current);return current;
+  const current=matrix?{k:matrix.a,x:matrix.e,y:matrix.f}:cameraRef.current;
+  smoothRef.current=false;setSmoothCamera(false);cameraRef.current=current;setZoom(current);return current;
  },[]);
  const changeZoom=(factor:number)=>{cameraCommand.current++;setSmoothCamera(true);setZoom(z=>{const k=Math.min(14,Math.max(minZoom,z.k*factor));return clampZoom(k,600+(z.x-600)*(k/z.k),295+(z.y-295)*(k/z.k))})};
  const fitCurrentView=useCallback((animate=true)=>{
@@ -191,10 +203,10 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
  };
  useEffect(()=>{const paste=(e:ClipboardEvent)=>transferHandlers.current.paste(e),drop=(e:DragEvent)=>transferHandlers.current.drop(e),over=(e:DragEvent)=>transferHandlers.current.over(e);document.addEventListener('paste',paste);window.addEventListener('drop',drop);window.addEventListener('dragover',over);return()=>{document.removeEventListener('paste',paste);window.removeEventListener('drop',drop);window.removeEventListener('dragover',over)}},[]);
  async function removePhoto(){if(!deleteId)return;setBusy(true);try{await api(photoUrl(deleteId),{method:'DELETE'});setDeleteId(null);setLightbox(null);await refresh();notify('Photo removed.')}catch(e){notify((e as Error).message)}finally{setBusy(false)}}
- const searchResults=regionCountries.filter(c=>!query||`${c.name} ${c.code}`.toLowerCase().includes(query.toLowerCase()));
- const matching=regionCountries.filter(c=>filter==='all'||(filter==='visited'?visitedIds.has(c.id):!visitedIds.has(c.id)));
- const galleryCountries=matching.filter(c=>visitedIds.has(c.id)||withPhotos.has(c.id));
- const albumForLightbox=lightbox?data.photos.filter(p=>p.countryId===lightbox.countryId):[];
+ const searchResults=useMemo(()=>regionCountries.filter(c=>!query||`${c.name} ${c.code}`.toLowerCase().includes(query.toLowerCase())),[regionCountries,query]);
+ const matching=useMemo(()=>regionCountries.filter(c=>filter==='all'||(filter==='visited'?visitedIds.has(c.id):!visitedIds.has(c.id))),[regionCountries,filter,visitedIds]);
+ const galleryCountries=useMemo(()=>matching.filter(c=>visitedIds.has(c.id)||withPhotos.has(c.id)),[matching,visitedIds,withPhotos]);
+ const albumForLightbox=useMemo(()=>lightbox?data.photos.filter(p=>p.countryId===lightbox.countryId):[],[lightbox?.countryId,data.photos]);
  const lightboxIndex=lightbox?albumForLightbox.findIndex(p=>p.id===lightbox.id):-1;
  const swipeStart=useRef<{x:number;y:number}|null>(null);
  const nextPhoto=(direction:number)=>{if(albumForLightbox.length>1)setLightbox(albumForLightbox[(lightboxIndex+direction+albumForLightbox.length)%albumForLightbox.length])};
@@ -202,11 +214,14 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
  const cropPhoto=cropId?data.photos.find(p=>p.id===cropId):null;
  const exportShapes=useMemo(()=>exportScope.startsWith('country:')?[{...byId[exportScope.slice(8)],...details[exportScope.slice(8)]}]:exportScope==='World'?projectedCountries:Object.entries(regions[exportScope as Region].shapes).map(([id,shape])=>({...byId[id],...shape})),[exportScope,projectedCountries]);
  const mapTerrain=terrainUrl(selected?`country:${selected}`:continent,mapStyle),exportTerrain=terrainUrl(exportScope,mapStyle);
- const exportBounds=[Math.min(...exportShapes.map(c=>c.bounds[0])),Math.min(...exportShapes.map(c=>c.bounds[1])),Math.max(...exportShapes.map(c=>c.bounds[2])),Math.max(...exportShapes.map(c=>c.bounds[3]))];
+ const exportBounds=useMemo(()=>[Math.min(...exportShapes.map(c=>c.bounds[0])),Math.min(...exportShapes.map(c=>c.bounds[1])),Math.max(...exportShapes.map(c=>c.bounds[2])),Math.max(...exportShapes.map(c=>c.bounds[3]))],[exportShapes]);
  async function savePhotoPosition(photo:Photo,frame:PhotoFrame){await api(photoUrl(photo.id),{method:'PATCH',body:JSON.stringify(frame)});setData(current=>({...current,photos:current.photos.map(p=>p.id===photo.id?{...p,...frame}:p)}));setLightbox(current=>current?.id===photo.id?{...current,...frame}:current);setCropId(null);notify('Photo position saved.')}
  async function downloadMap(){setExporting(true);setExportError('');setExportProgress('Preparing your map…');try{const blob=await exportMap(exportShapes,visits,data.photos,setExportProgress,exportTerrain),name=`worldwide-${exportScope.toLowerCase().replace(/[^a-z0-9]+/g,'-')}.png`;if(!await saveNativeFile(blob,name)){const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}setExportProgress('Image saved.')}catch(error){setExportError((error as Error).message);setExportProgress('')}finally{setExporting(false)}}
  const closeCountry=()=>{if(!busy)void transitionMap(()=>setSelected(null),terrainUrl(continent,mapStyle).replace('/terrain/','/basemaps/'))};
  const countryPaths=useMemo(()=>mapShapes.map(c=>{const v=visits[c.id],hasCover=!!(v?.visited&&v.coverId),dim=!selected&&(filter==='visited'?!v?.visited:filter==='unvisited'?!!v?.visited:false);return <g className={`country-region ${dim?'region-dimmed':''}`} key={c.id}><path d={c.path} data-country={c.id} style={{fill:hasCover?`url(#cover-${c.id})`:selected?(c.id==='ATA'?'#f5f7f6':'url(#map-terrain)'):'transparent'}} className={`country ${v?.visited?'visited':''} ${hasCover?'has-photo':''} ${dim?'dimmed':''} ${selected===c.id?'is-selected':''}`} vectorEffect="non-scaling-stroke" role="button" tabIndex={-1} aria-label={`${c.name}${v?.visited?', visited':''}`} onClick={()=>{if(!dragged.current){if(selected===c.id&&v?.coverId)setCropId(v.coverId);else activateCountry(c.id)}}} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activateCountry(c.id)}}} onMouseEnter={e=>{if(!drag.current)setHover(current=>current?.id===c.id?current:{id:c.id,x:e.clientX,y:e.clientY})}}/>{v?.visited&&!hasCover&&<path className={`visited-wash active ${dim?'dimmed':''}`} d={c.path} fill={VISITED_TINT} aria-hidden="true"/>}{dim&&<path d={c.path} fill="#e7eff1" opacity={.84} pointerEvents="none"/>}<path className={`country-border ${c.id==='ATA'?'antarctica-border':''} ${v?.visited?'visited':''} ${selected===c.id?'selected':''}`} d={c.outline??c.path} vectorEffect="non-scaling-stroke" aria-hidden="true"/></g>}),[mapShapes,visits,filter,selected,openCountry]);
+ const mapDefinitions=useMemo(()=><defs><TerrainPattern id="map-terrain" url={mapTerrain}/>{data.visits.filter(v=>v.coverId).map(v=>{const c=byId[v.countryId];if(!c)return null;const shape=selected===c.id?details[c.id]:continent==='World'?worldShapes[c.id]:regions[continent].shapes[c.id];if(!shape)return null;const [x1,y1,x2,y2]=shape.bounds;return <PhotoPattern key={v.countryId} id={`cover-${v.countryId}`} photo={photosById.get(v.coverId!)||{id:v.coverId!}} bounds={shape.bounds}/>})}</defs>,[mapTerrain,data.visits,photosById,selected,continent,worldShapes]);
+ const viewportWidth=stage.current?.clientWidth||1200;
+ const hitTargets=useMemo(()=>!selected&&mapShapes.map(c=>{const unit=mapBox.width/Math.max(1,viewportWidth)/zoom.k;if(Math.max(c.bounds[2]-c.bounds[0],c.bounds[3]-c.bounds[1])/unit>=7)return null;return <circle key={`hit-${c.id}`} className="country-hit-target" cx={(c.bounds[0]+c.bounds[2])/2} cy={(c.bounds[1]+c.bounds[3])/2} r={10*unit} role="button" tabIndex={-1} aria-label={`Select ${c.name}`} onClick={()=>{if(!dragged.current)activateCountry(c.id)}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();activateCountry(c.id)}}} onMouseEnter={e=>{if(!drag.current)setHover(current=>current?.id===c.id?current:{id:c.id,x:e.clientX,y:e.clientY})}}/>}),[selected,mapShapes,mapBox.width,viewportWidth,zoom.k,openCountry]);
  return <main className="map-app" aria-label="Worldwide travel map">
   <div ref={stage} className="map-canvas">
    <svg ref={svg} className="world-map" viewBox={`${mapBox.x} ${mapBox.y} ${mapBox.width} ${mapBox.height}`} role="group" aria-label="World map. Click a country to mark it visited or add photos."
@@ -214,8 +229,8 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
     onPointerMove={e=>{if(touchPoints.current.has(e.pointerId))touchPoints.current.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pinch.current&&touchPoints.current.size===2){const [a,b]=Array.from(touchPoints.current.values()),p=pinch.current,rect=e.currentTarget.getBoundingClientRect(),k=Math.min(14,Math.max(minZoom,p.k*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(1,p.distance))),mx=mapBox.x+((a.x+b.x)/2-rect.left)/rect.width*mapBox.width,my=mapBox.y+((a.y+b.y)/2-rect.top)/rect.height*mapBox.height;queueCamera(clampZoom(k,mx-(p.anchorX-p.x)*k/p.k,my-(p.anchorY-p.y)*k/p.k));setHover(null);return}if(!drag.current)return;const dx=e.clientX-drag.current.x,dy=e.clientY-drag.current.y;if(Math.abs(dx)+Math.abs(dy)>5){dragged.current=true;e.currentTarget.setPointerCapture(e.pointerId);setHover(null);const rect=e.currentTarget.getBoundingClientRect(),{ox,oy}=drag.current;queueCamera(clampZoom(cameraRef.current.k,ox+dx/rect.width*mapBox.width,oy+dy/rect.height*mapBox.height))}}}
     onPointerUp={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);touchPoints.current.delete(e.pointerId);pinch.current=null;drag.current=null}}
     onPointerCancel={()=>{touchPoints.current.clear();pinch.current=null;drag.current=null}} onMouseLeave={()=>setHover(null)}>
-    <defs><TerrainPattern id="map-terrain" url={mapTerrain}/>{data.visits.filter(v=>v.coverId).map(v=>{const c=byId[v.countryId];if(!c)return null;const shape=selected===c.id?details[c.id]:continent==='World'?worldShapes[c.id]:regions[continent].shapes[c.id];if(!shape)return null;const [x1,y1,x2,y2]=shape.bounds;return <PhotoPattern key={v.countryId} id={`cover-${v.countryId}`} photo={data.photos.find(p=>p.id===v.coverId)||{id:v.coverId!}} bounds={shape.bounds}/>})}</defs>
-    <g className={`map-geography ${selected?'country-closeup':'overview'} ${zoom.k>3?'detailed-borders':''} ${smoothCamera?'smooth':''}`} style={{transform:`translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})`}}>{!selected&&<image className="base-map-image" href={mapTerrain.replace('/terrain/','/basemaps/')} x={0} y={0} width={1200} height={590} preserveAspectRatio="none" pointerEvents="none"/>}{countryPaths}{!selected&&mapShapes.map(c=>{const unit=mapBox.width/Math.max(1,stage.current?.clientWidth||1200)/zoom.k;if(Math.max(c.bounds[2]-c.bounds[0],c.bounds[3]-c.bounds[1])/unit>=7)return null;return <circle key={`hit-${c.id}`} className="country-hit-target" cx={(c.bounds[0]+c.bounds[2])/2} cy={(c.bounds[1]+c.bounds[3])/2} r={10*unit} role="button" tabIndex={-1} aria-label={`Select ${c.name}`} onClick={()=>{if(!dragged.current)activateCountry(c.id)}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();activateCountry(c.id)}}} onMouseEnter={e=>{if(!drag.current)setHover(current=>current?.id===c.id?current:{id:c.id,x:e.clientX,y:e.clientY})}}/>})}</g>
+    {mapDefinitions}
+    <g className={`map-geography ${selected?'country-closeup':'overview'} ${zoom.k>3?'detailed-borders':''} ${smoothCamera?'smooth':''}`} style={{transform:`translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})`}}>{!selected&&<image className="base-map-image" href={mapTerrain.replace('/terrain/','/basemaps/')} x={0} y={0} width={1200} height={590} preserveAspectRatio="none" pointerEvents="none"/>}{countryPaths}{hitTargets}</g>
    </svg>
   </div>
   <div className="search-dock" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))setFinder(false)}}>

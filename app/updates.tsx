@@ -1,24 +1,32 @@
-import {useEffect,useState} from 'react';
-import {Download,RefreshCw} from 'lucide-react';
-import {checkNativeUpdate,installNativeUpdate,isNativeApp,nativeUpdateAvailable} from './native';
-import {version} from '../package.json';
-type UpdateInfo={version:string;available:boolean;installedVersion:string};
-type UpdateProgress={progress:number|null;status:string};
-declare global{interface Window{WorldwideDesktop?:{checkUpdate():Promise<UpdateInfo>;installUpdate():Promise<{status:string}>;onUpdateProgress(callback:(value:UpdateProgress)=>void):()=>void}}}
-const base='https://github.com/KTihana/Worldwide/releases/latest/download/';
+import {useCallback,useEffect,useState} from 'react';
+import {Check,RefreshCw} from 'lucide-react';
+import {websiteChanged,type WebsiteInfo} from './website-update';
+// Capture the page's original entry assets before lazy country/map styles load.
+const loadedAssets=Array.from(document.querySelectorAll<HTMLScriptElement|HTMLLinkElement>('script[type="module"][src],link[rel="stylesheet"][href]')).map(element=>new URL(element instanceof HTMLScriptElement?element.src:element.href,location.href).pathname).sort();
+const loadedBuild=document.querySelector<HTMLMetaElement>('meta[name="worldwide-build"]')?.content||'';
 export function AppUpdates(){
- const android=isNativeApp(),desktop=window.WorldwideDesktop;
- const supported=android?nativeUpdateAvailable():!!desktop;
- const [info,setInfo]=useState<UpdateInfo|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[progress,setProgress]=useState<number|null>(null);
- useEffect(()=>{
-  const change=(value:UpdateProgress)=>{setMessage(value.status);setProgress(value.progress)};
-  const listener=(event:Event)=>change((event as CustomEvent<UpdateProgress>).detail);
-  window.addEventListener('worldwide-update-progress',listener);const unsubscribe=desktop?.onUpdateProgress(change);
-  return()=>{window.removeEventListener('worldwide-update-progress',listener);unsubscribe?.()};
- },[desktop]);
- async function check(){setBusy(true);setError('');setMessage('Checking for updates…');setProgress(null);try{const result=android?await checkNativeUpdate():await desktop!.checkUpdate();setInfo(result);setMessage(result.available?`Version ${result.version} is ready.`:'You’re up to date.')}catch(error){setError((error as Error).message);setMessage('')}finally{setBusy(false)}}
- async function install(){setBusy(true);setError('');setMessage('Preparing update…');setProgress(null);try{const result=android?await installNativeUpdate():await desktop!.installUpdate();setMessage(result.status==='permission-required'?'Allow updates from Worldwide, then return and tap Install update.':android?'Confirm Update in the Android installer.':'Installing update. Worldwide will reopen.')}catch(error){setError((error as Error).message);setMessage('')}finally{setBusy(false);setProgress(null)}}
- return <div className="app-updates"><h3><Download size={17}/> App updates</h3><p>Version {info?.installedVersion||version}</p>
-  {supported?<><button className="button" disabled={busy} onClick={()=>void(info?.available?install():check())}>{busy?<RefreshCw size={16} className="spinning"/>:<Download size={16}/>} {busy?'Please wait…':info?.available?'Install update':'Check for updates'}</button>{progress!==null&&<progress aria-label="Update download" max={100} value={progress}/>}<p aria-live="polite">{message}</p>{error&&<p role="alert" className="error">{error}</p>}<small>Your photos and account stay saved.</small></>:<><a className="button" href={base+(android?'Worldwide-Android.apk':'Worldwide-Windows-Setup.exe')} target={android?undefined:'_blank'} rel="noreferrer">Download latest {android?'Android':'Windows'} app</a><small>Install this update once to enable updates inside Worldwide. Your album stays saved.</small></>}
+ const [info,setInfo]=useState<WebsiteInfo|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[available,setAvailable]=useState(false);
+ const check=useCallback(async()=>{
+  setBusy(true);setMessage('');
+  try{
+   const response=await fetch('/api/version',{cache:'no-store',signal:AbortSignal.timeout(5000)});
+   if(!response.ok)throw new Error('Connection unavailable');
+   const value=await response.json() as WebsiteInfo;
+   if(!Array.isArray(value.entryAssets)||!value.entryAssets.length)throw new Error('The website is updating');
+   setInfo(value);setAvailable(websiteChanged(loadedBuild,loadedAssets,value));
+  }catch{setMessage('Connect to your computer to check for updates.')}finally{setBusy(false)}
+ },[]);
+ useEffect(()=>{void check();const online=()=>void check();window.addEventListener('online',online);return()=>window.removeEventListener('online',online)},[check]);
+ async function refresh(){
+  const event=new Event('worldwide-before-refresh',{cancelable:true});
+  if(!window.dispatchEvent(event)){setMessage('Finish your current upload or edit, then refresh.');return}
+  // Refresh is always a deliberate action. Offline data and cookies stay in place.
+  setBusy(true);setMessage('Refreshing…');
+  try{const response=await fetch('/api/version',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(!response.ok)throw new Error('Offline');if(!window.dispatchEvent(new Event('worldwide-before-refresh',{cancelable:true}))){setMessage('Finish your current upload or edit, then refresh.');setBusy(false);return}window.location.reload()}catch{setMessage('Reconnect to your computer, then refresh.');setBusy(false)}
+ }
+ return <div className="app-updates"><h3><RefreshCw size={17}/> Website updates</h3>
+  {info&&<p>Version {info.version} · {available?'A newer website is ready.':'Up to date'}</p>}
+  <button className="button" disabled={busy} onClick={()=>void(available?refresh():check())}>{busy?<RefreshCw size={16} className="spinning"/>:available?<RefreshCw size={16}/>:<Check size={16}/>} {busy?'Checking…':available?'Refresh to update':'Check for updates'}</button>
+  <p aria-live="polite">{message}</p><small>Your photos and account stay saved.</small>
  </div>
 }

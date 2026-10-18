@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,readFile,mkdir,copyFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {websiteChanged} from '../app/website-update.ts';
+import {entryAssets,websiteVersion} from '../server/website-version.ts';
+const folder=await mkdtemp(join(tmpdir(),'worldwide-version-'));
+try{
+ const html='<link rel="icon" href="/favicon.svg"><script crossorigin src="/assets/index-abc.js" type="module"></script><link href="/assets/index-def.css" rel="stylesheet">';
+ assert.deepEqual(entryAssets(html),['/assets/index-abc.js','/assets/index-def.css']);
+ await writeFile(join(folder,'index.html'),html);await writeFile(join(folder,'offline-assets.json'),JSON.stringify({version:'0123456789abcdef',assets:['/']}));
+ const first=await websiteVersion(folder),firstData=await first.json();assert.equal(first.status,200);assert.equal(first.headers.get('cache-control'),'no-store');assert.deepEqual(firstData.entryAssets,entryAssets(html));assert.equal(firstData.build,'0123456789abcdef');
+ assert.deepEqual(await(await websiteVersion(folder)).json(),firstData,'Repeated checks do not create a new version');
+ await writeFile(join(folder,'index.html'),html.replace('index-def.css','index-new.css'));assert.notDeepEqual((await(await websiteVersion(folder)).json()).entryAssets,firstData.entryAssets,'A CSS-only update is detected');
+ await writeFile(join(folder,'offline-assets.json'),'incomplete');assert.equal((await websiteVersion(folder)).status,503,'Partial rebuilds cannot be advertised as ready');
+ const fixture=join(folder,'fixture'),dist=join(fixture,'dist'),scripts=join(fixture,'scripts');
+ await mkdir(dist,{recursive:true});await mkdir(scripts);
+ await copyFile(new URL('../scripts/generate-offline-assets.mjs',import.meta.url),join(scripts,'generate-offline-assets.mjs'));
+ await writeFile(join(dist,'index.html'),`<html><head>${html}</head><body></body></html>`);
+ await writeFile(join(dist,'terrain.png'),'first-image');
+ const generate=()=>execFileSync(process.execPath,[join(scripts,'generate-offline-assets.mjs')],{stdio:'pipe'});
+ generate();const initial=await(await websiteVersion(dist)).json();
+ assert.equal(initial.build,/<meta name="worldwide-build" content="([^"]*)">/.exec(await readFile(join(dist,'index.html'),'utf8'))?.[1]);
+ generate();assert.deepEqual(await(await websiteVersion(dist)).json(),initial,'Generated metadata does not cause endless update notifications');
+ await writeFile(join(dist,'index.html.gz'),'compressed sidecar');await writeFile(join(dist,'index.html.br'),'compressed sidecar');
+ generate();assert.equal((await(await websiteVersion(dist)).json()).build,initial.build,'Compressed sidecars do not change build identity');
+ assert.ok(!JSON.parse(await readFile(join(dist,'offline-assets.json'),'utf8')).assets.some(path=>/\.(gz|br)$/.test(path)));
+ await writeFile(join(dist,'terrain.png'),'updated-image');generate();const imageUpdate=await(await websiteVersion(dist)).json();
+ assert.deepEqual(imageUpdate.entryAssets,initial.entryAssets);assert.notEqual(imageUpdate.build,initial.build);
+ assert.equal(websiteChanged(initial.build,initial.entryAssets,imageUpdate),true,'Image-only changes offer a refresh');
+ assert.equal(websiteChanged(imageUpdate.build,imageUpdate.entryAssets,imageUpdate),false);
+ assert.equal(websiteChanged('',initial.entryAssets,{...initial,entryAssets:['/assets/new.js']}),true,'Legacy pages retain entry asset fallback');
+ await writeFile(join(dist,'offline-assets.json'),JSON.stringify({version:initial.build,assets:['/']}));
+ assert.equal((await websiteVersion(dist)).status,503,'Mismatched HTML and manifest are not advertised as ready');
+ console.log('PASS: stable full-build metadata, image/CSS-only updates, compressed sidecar exclusion, legacy page detection, no-store responses, and incomplete-build handling.');
+}finally{await rm(folder,{recursive:true,force:true})}

@@ -38,6 +38,11 @@ app.whenReady().then(async()=>{try{
  const timing=await js(`new Promise(resolve=>{const spans=[];let previous=performance.now();function frame(now){spans.push(now-previous);previous=now;document.querySelector('.world-map').dispatchEvent(new WheelEvent('wheel',{deltaY:-6,clientX:700,clientY:450,bubbles:true,cancelable:true}));if(spans.length<45)requestAnimationFrame(frame);else resolve({average:spans.slice(5).reduce((a,b)=>a+b,0)/(spans.length-5),max:Math.max(...spans.slice(5))})}requestAnimationFrame(frame)})`);
  await click('Show whole world');await pause(400);
  await window.webContents.capturePage().then(image=>require('node:fs').writeFileSync('/tmp/worldwide-map-check.png',image.toPNG()));
- await click('Your account');assert.equal(await js(`!!document.querySelector('.app-updates a[href$="Worldwide-Windows-Setup.exe"]')`),true);
+ await click('Your account');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Up to date')`),'website is current');
+ assert.equal(await js(`document.querySelectorAll('.app-updates a').length`),0,'Website updates do not promote native installers');
+ await js(`(()=>{const original=window.fetch;window.fetch=(input,init)=>String(input)==='/api/version'?Promise.resolve(Response.json({version:'9.9.9',build:'1111111111111111',entryAssets:['/assets/new-site.js']})):original(input,init);window.worldwideRefreshSentinel='kept';window.addEventListener('worldwide-before-refresh',event=>event.preventDefault(),{once:true})})()`);
+ await click('Check for updates');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Refresh to update')`),'new website available');
+ assert.equal(await js(`window.worldwideRefreshSentinel`),'kept','An available update never reloads automatically');
+ await click('Refresh to update');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Finish your current upload or edit')`),'refresh respects unsaved-work guard');assert.equal(await js(`window.worldwideRefreshSentinel`),'kept');
  assert.deepEqual(failures,[]);console.log('PASS: desktop continent/country picker, Antarctica, gallery pointer reorder, crop entry, updates. Wheel frame times:',timing);
  }catch(error){console.error(error);process.exitCode=1}finally{window?.destroy();server?.kill();await pause(300);rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode||0)}});

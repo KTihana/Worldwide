@@ -1,5 +1,5 @@
 const SHELL='elsewhere-shell-v1',ALBUM='elsewhere-album-v1';
-async function network(request){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3500);try{return await fetch(request,{signal:controller.signal})}finally{clearTimeout(timer)}}
+async function network(request){if(self.navigator?.onLine===false)throw new TypeError('Offline');const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3500);try{return await fetch(request,{signal:controller.signal})}finally{clearTimeout(timer)}}
 self.addEventListener('install',event=>{event.waitUntil(self.skipWaiting())});
 self.addEventListener('activate',event=>{event.waitUntil(self.clients.claim())});
 self.addEventListener('fetch',event=>{
@@ -10,6 +10,11 @@ self.addEventListener('fetch',event=>{
  if(path==='/api/atlas'||/^\/api\/photos\/[^/]+$/.test(path)){
   event.respondWith((async()=>{
    const cache=await caches.open(ALBUM);
+   // Photo bytes are immutable by ID; edits change atlas metadata, not the file.
+   // Reopening a gallery should not download the same originals every time.
+   if(path!=='/api/atlas'&&request.cache!=='no-store'){
+    const saved=await cache.match(request);if(saved){const headers=new Headers(saved.headers);headers.set('X-Elsewhere-Cached','1');return new Response(saved.body,{status:saved.status,headers})}
+   }
    try{const response=await network(request);if(response.ok)await cache.put(request,response.clone()).catch(()=>{});return response}
    catch{const saved=await cache.match(request);if(!saved)return new Response(JSON.stringify({error:'This photo is not saved on this phone yet.'}),{status:503,headers:{'Content-Type':'application/json'}});const headers=new Headers(saved.headers);headers.set('X-Elsewhere-Offline','1');return new Response(saved.body,{status:saved.status,statusText:saved.statusText,headers})}
   })());return;

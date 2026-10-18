@@ -5,15 +5,19 @@ const SHELL='elsewhere-shell-v1',ALBUM='elsewhere-album-v1';
 const SESSION='/__offline_account__',READY='/__offline_ready__';
 let state:State={supported:false,busy:false,ready:false,saved:0,total:0,phase:'map',error:''};
 let current:Album|null=null,running:Promise<void>|null=null,lastSignature='',registration:Promise<boolean>|null=null,albumGeneration=0;
+let shellPreparation:Promise<void>|null=null,photoIndex:Promise<Set<string>>|null=null,persistenceRequested=false;
+const signatures=new WeakMap<object,string>();
+/** Album objects are immutable; polling and offline sync can share one encoding. */
+export function albumSignature(data:Album){let value=signatures.get(data);if(value===undefined){value=JSON.stringify(data);signatures.set(data,value)}return value}
 const notify=()=>window.dispatchEvent(new Event('elsewhere-offline-progress'));
-function update(patch:Partial<State>){state={...state,...patch};notify()}
+function update(patch:Partial<State>){if(Object.entries(patch).every(([key,value])=>state[key as keyof State]===value))return;state={...state,...patch};notify()}
 export function offlineState(){return state}
 export function listenOffline(listener:()=>void){window.addEventListener('elsewhere-offline-progress',listener);return()=>window.removeEventListener('elsewhere-offline-progress',listener)}
 export function offlineAvailable(){return isNativeApp()||window.isSecureContext&&'serviceWorker' in navigator&&'caches' in window}
 export async function registerOffline(){
- if(isNativeApp()){const saved=readNativeValue<Partial<State>>('offline-state');update({...saved,supported:true,busy:false});return true}
+ if(isNativeApp()){if(!registration){const saved=readNativeValue<Partial<State>>('offline-state');update({...saved,supported:true,busy:false});registration=Promise.resolve(true)}return registration}
  if(!offlineAvailable()){update({supported:false});return false}
- if(!registration)registration=navigator.serviceWorker.register('/sw.js').then(async()=>{await navigator.serviceWorker.ready;update({supported:true});return true}).catch(()=>{update({supported:false,error:'Offline access needs a trusted HTTPS phone address.'});return false});
+ if(!registration)registration=navigator.serviceWorker.register('/sw.js').then(async()=>{await navigator.serviceWorker.ready;update({supported:true});return true}).catch(()=>{registration=null;update({supported:false,error:'Offline access needs a trusted HTTPS phone address.'});return false});
  return registration;
 }
 export async function rememberOfflineAccount(email:string){
@@ -30,7 +34,7 @@ export async function readOfflineAccount(){
 }
 export async function clearOfflineAlbum(){
  albumGeneration++;
- current=null;lastSignature='';update({busy:false,ready:false,saved:0,total:0,error:''});
+ current=null;lastSignature='';photoIndex=null;update({busy:false,ready:false,saved:0,total:0,error:''});
  if(isNativeApp()){clearNativeAlbum();return}
  if('caches' in window)await caches.delete(ALBUM);
 }
@@ -43,47 +47,57 @@ async function download(cache:Cache,url:string,refresh=false){
 async function workers<T>(items:T[],count:number,task:(item:T)=>Promise<void>){
  let index=0;await Promise.all(Array.from({length:Math.min(count,items.length)},async()=>{while(index<items.length){const item=items[index++];await task(item)}}));
 }
+function prepareShell(shell:Cache){
+ if(!shellPreparation)shellPreparation=(async()=>{
+  const manifestResponse=await fetch('/offline-assets.json',{cache:'no-store'});
+  if(!manifestResponse.ok)throw new Error('Couldn’t prepare the offline app.');
+  const manifest=await manifestResponse.json() as {version:string;assets:string[]};
+  const marker=await shell.match(READY);
+  if((await marker?.text())===manifest.version)return;
+  await workers(manifest.assets,3,asset=>download(shell,asset,!asset.startsWith('/assets/')));
+  await shell.put(READY,new Response(manifest.version));
+  const keep=new Set([...manifest.assets,READY]);
+  for(const request of await shell.keys())if(!keep.has(new URL(request.url).pathname))await shell.delete(request);
+ })().catch(error=>{shellPreparation=null;throw error});
+ return shellPreparation;
+}
+function savedPhotos(album:Cache){
+ if(!photoIndex)photoIndex=album.keys().then(keys=>new Set(keys.map(request=>new URL(request.url).pathname).filter(path=>/^\/api\/photos\/[^/]+$/.test(path))));
+ return photoIndex;
+}
 async function perform(data:Album){
  const generation=albumGeneration;
- if(!await registerOffline())return;
- if(generation!==albumGeneration)return;
- update({busy:true,ready:false,total:data.photos.length,phase:'map',error:''});
+ if(!await registerOffline()||generation!==albumGeneration)return;
+ update({busy:true,total:data.photos.length,error:''});
  try{
   if(isNativeApp()){
    update({phase:'photos'});window.worldwideNativeProgress=(saved,total)=>{if(generation===albumGeneration)update({saved,total})};
    await syncNativeAlbum(data);if(generation!==albumGeneration)return;update({busy:false,ready:true,saved:data.photos.length,total:data.photos.length,error:''});storeNativeValue('offline-state',state);return;
   }
   const [shell,album]=await Promise.all([caches.open(SHELL),caches.open(ALBUM)]);
-  await album.put('/api/atlas',new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}}));
-  const manifestResponse=await fetch('/offline-assets.json',{cache:'no-store'});
-  if(!manifestResponse.ok)throw new Error('Couldn’t prepare the offline app.');
-  const manifest=await manifestResponse.json() as {version:string;assets:string[]};
-  const marker=await shell.match(READY);
-  if((await marker?.text())!==manifest.version){
-   await workers(manifest.assets,5,asset=>download(shell,asset,!asset.startsWith('/assets/')));
-   await shell.put(READY,new Response(manifest.version));
-   const keep=new Set([...manifest.assets,READY]);
-   for(const request of await shell.keys())if(!keep.has(new URL(request.url).pathname))await shell.delete(request);
-  }
-  const photoUrls=data.photos.map(photo=>`/api/photos/${photo.id}`);
-  if(generation!==albumGeneration)return;update({phase:'photos'});
-  let saved=0;for(const url of photoUrls)if(await album.match(url))saved++;
-  update({saved});
-  await workers(photoUrls,2,async url=>{if(generation!==albumGeneration||await album.match(url))return;await download(album,url);if(generation!==albumGeneration)return;saved++;update({saved})});
   if(generation!==albumGeneration)return;
-  const keep=new Set(['/api/atlas',SESSION,...photoUrls]);
-  for(const request of await album.keys())if(!keep.has(new URL(request.url).pathname))await album.delete(request);
-  await navigator.storage?.persist?.().catch(()=>false);
+  await album.put('/api/atlas',new Response(albumSignature(data),{headers:{'Content-Type':'application/json'}}));
+  update({phase:'map'});await prepareShell(shell);
+  if(generation!==albumGeneration)return;
+  const photoUrls=new Set(data.photos.map(photo=>`/api/photos/${photo.id}`)),saved=await savedPhotos(album);
+  if(generation!==albumGeneration)return;
+  let count=Array.from(photoUrls).filter(url=>saved.has(url)).length;
+  update({phase:'photos',saved:count,ready:count===photoUrls.size});
+  const missing=Array.from(photoUrls).filter(url=>!saved.has(url));
+  await workers(missing,2,async url=>{if(generation!==albumGeneration)return;await download(album,url);if(generation!==albumGeneration)return;saved.add(url);update({saved:++count})});
+  if(generation!==albumGeneration)return;
+  for(const url of saved)if(!photoUrls.has(url)){await album.delete(url);saved.delete(url)}
+  if(!persistenceRequested){persistenceRequested=true;await navigator.storage?.persist?.().catch(()=>false)}
   if(generation!==albumGeneration)return;update({busy:false,ready:true,saved:data.photos.length,total:data.photos.length,error:''});
  }catch(error){if(generation===albumGeneration)update({busy:false,ready:false,error:(error as Error).name==='QuotaExceededError'?'This device is out of space for the offline album.':(error as Error).message})}
 }
 export function syncOffline(data:Album,force=false){
  current=data;
  if(!offlineAvailable())return;
- const signature=JSON.stringify(data);
+ const signature=albumSignature(data);
  if(!force&&signature===lastSignature)return;
  if(running)return;
  const generation=albumGeneration;
- running=perform(data).then(()=>{if(generation===albumGeneration&&!state.error)lastSignature=signature}).finally(()=>{running=null;if(current&&(generation!==albumGeneration||JSON.stringify(current)!==signature))syncOffline(current)});
+ running=perform(data).then(()=>{if(generation===albumGeneration&&!state.error)lastSignature=signature}).finally(()=>{running=null;if(current&&(generation!==albumGeneration||albumSignature(current)!==signature))syncOffline(current)});
 }
-export function retryOffline(){if(current)syncOffline(current,true)}
+export function retryOffline(){shellPreparation=null;photoIndex=null;if(current)syncOffline(current,true)}

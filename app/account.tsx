@@ -1,7 +1,13 @@
-import {useEffect,useRef,useState,useSyncExternalStore} from 'react';
+import {useEffect,useRef,useState,useSyncExternalStore,lazy,Suspense,Component,type ReactNode} from 'react';
 import {Globe2,LoaderCircle,LogOut,Smartphone,Copy,Check,X,RotateCw,ArrowRight,Download} from 'lucide-react';
 import {AppUpdates} from './updates';
-import Atlas,{Modal} from './atlas';
+import {Modal} from './modal';
+const Atlas=lazy(()=>import('./atlas'));
+class MapLoadBoundary extends Component<{children:ReactNode},{failed:boolean}>{
+ state={failed:false};
+ static getDerivedStateFromError(){return {failed:true}}
+ render(){return this.state.failed?<main className="account-screen"><div className="account-card"><h1>Let’s reopen your map</h1><p>Keep your computer running, then refresh.</p><button className="button primary" onClick={()=>location.reload()}>Refresh</button></div></main>:this.props.children}
+}
 import {isNativeApp,nativeConnection} from './native';
 import {clearOfflineAlbum,listenOffline,offlineAvailable,offlineState,readOfflineAccount,registerOffline,rememberOfflineAccount,retryOffline} from './offline';
 type Session={account:{email:string}|null;needsSetup:boolean;canSetup:boolean;canReset:boolean};
@@ -58,7 +64,7 @@ export default function AccountApp(){
   {recovering&&!session.canReset?<>
    <p>Open Worldwide on your computer to reset your password.</p>
    <button className="text-button" onClick={()=>{setRecovering(false);setError('')}}>Back to sign in</button>
-  </>:session.needsSetup&&!session.canSetup?<p className="account-message">Open Worldwide on your computer to create the account first. Then sign in here with the same details.</p>:<>
+  </>:session.needsSetup&&!session.canSetup?<p className="account-message">Open Worldwide on your computer to create the account first. Then scan its Connect phone QR code.</p>:<>
    {!session.needsSetup&&<p>{recovering?'Choose a new password. Your map and photos stay saved.':'Sign in to your private travel album.'}</p>}
    <form onSubmit={submit}>
     {!recovering&&<label>Email<input type="email" autoComplete="username" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/></label>}
@@ -69,14 +75,14 @@ export default function AccountApp(){
    </form>
   </>}{changeComputer}<small>Private • Saved on your computer</small>
  </div></main>;
- return <><Atlas onAccount={()=>{setMenu(true);setError('')}}/>
+ return <><MapLoadBoundary><Suspense fallback={<main className="account-screen"><LoaderCircle className="spinning" aria-label="Opening your map"/></main>}><Atlas onAccount={()=>{setMenu(true);setError('')}}/></Suspense></MapLoadBoundary>
  <div className="landscape-tip"><RotateCw size={15}/><span>Turn sideways for the wide map</span></div>
- {menu&&<Modal label="Your account" className="account-modal" onClose={()=>setMenu(false)}><div className="modal-heading"><h2>Your album</h2><button className="icon-button" aria-label="Close account" onClick={()=>setMenu(false)}><X size={21}/></button></div><p className="account-email">{session.account.email}</p>{isNativeApp()?<div className="phone-connect"><h3><Smartphone size={18}/> Your computer</h3><p className="phone-address">{nativeConnection()}</p><p>Photos and changes sync both ways while connected.</p><button className="button" onClick={()=>window.dispatchEvent(new Event('worldwide-change-computer'))}>Change computer</button></div>:!offlineSession&&(session.canReset?<ConnectAndroid/>:<div className="phone-connect"><h3><Smartphone size={18}/> Connect Android</h3><p>Open Worldwide on your computer to connect your phone.</p></div>)}<div className="offline-account"><h3><Download size={17}/> Saved on this device</h3><p role="status">{offlineSession?'Viewing your saved album offline.':!offlineAvailable()?'Use the installed Android app to keep photos offline.':offline.busy?offline.phase==='map'?'Saving the map for offline use…':`Saving ${offline.saved} of ${offline.total} photos…`:offline.ready?`${offline.saved} ${offline.saved===1?'photo':'photos'} and the map are ready offline.`:offline.error||'Preparing your offline copy…'}</p>{offline.error&&offlineAvailable()&&<button className="button" onClick={retryOffline}>Try again</button>}</div>{error&&<p className="editor-error" role="alert">{error}</p>}<AppUpdates/><button className="button sign-out" disabled={pending} onClick={signOut}><LogOut size={15}/> Sign out</button></Modal>}
+ {menu&&<Modal label="Your account" className="account-modal" onClose={()=>setMenu(false)}><div className="modal-heading"><h2>Your album</h2><button className="icon-button" aria-label="Close account" onClick={()=>setMenu(false)}><X size={21}/></button></div><p className="account-email">{session.account.email}</p>{isNativeApp()?<div className="phone-connect"><h3><Smartphone size={18}/> Your computer</h3><p className="phone-address">{nativeConnection()}</p><p>Photos and changes sync both ways while connected.</p><button className="button" onClick={()=>window.dispatchEvent(new Event('worldwide-change-computer'))}>Change computer</button></div>:!offlineSession&&(session.canReset?<ConnectPhone/>:<div className="phone-connect"><h3><Smartphone size={18}/> Your local album</h3><p>Photos and changes save to your computer.</p><details className="phone-shortcut"><summary>Keep it on your home screen</summary><p>In your browser’s menu, choose Add to Home Screen. Turn your phone sideways for the full map.</p></details></div>)}<div className="offline-account"><h3><Download size={17}/> {offlineAvailable()?'Saved on this device':'Stored on your computer'}</h3><p role="status">{offlineSession?'Viewing your saved album offline.':!offlineAvailable()?'Keep your computer running and use the same Wi-Fi to open your album here.':offline.busy?offline.phase==='map'?'Saving the map for offline use…':`Saving ${offline.saved} of ${offline.total} photos…`:offline.ready?`${offline.saved} ${offline.saved===1?'photo':'photos'} and the map are ready offline.`:offline.error||'Preparing your offline copy…'}</p>{offline.error&&offlineAvailable()&&<button className="button" onClick={retryOffline}>Try again</button>}</div>{error&&<p className="editor-error" role="alert">{error}</p>}<AppUpdates/><button className="button sign-out" disabled={pending} onClick={signOut}><LogOut size={15}/> Sign out</button></Modal>}
  </>;
 }
 
 type PairingCode={qr:string;pairingUrl:string;pairingId:string;expiresAt:string|number};
-function ConnectAndroid(){
+function ConnectPhone(){
  const [urls,setUrls]=useState<string[]>([]),[address,setAddress]=useState(''),[pair,setPair]=useState<PairingCode|null>(null);
  const [busy,setBusy]=useState(true),[error,setError]=useState(''),[copied,setCopied]=useState(false),[now,setNow]=useState(Date.now());
  const [pairStatus,setPairStatus]=useState<'waiting'|'paired'|'expired'>('waiting');
@@ -84,7 +90,7 @@ function ConnectAndroid(){
  async function generate(serverUrl:string){
   const current=++request.current;setBusy(true);setError('');setPair(null);setPairStatus('waiting');
   try{
-   const result=await auth('pair-start',{serverUrl}) as PairingCode;
+   const result=await auth('pair-start',{serverUrl,client:'web'}) as PairingCode;
    if(current!==request.current)return;
    if(!result.qr||!result.pairingId||!Number.isFinite(new Date(result.expiresAt).getTime()))throw new Error('Couldn’t create a connection code. Try again.');
    setPair(result);setNow(Date.now());
@@ -120,18 +126,18 @@ function ConnectAndroid(){
   timer=setTimeout(()=>void poll(),2000);
   return()=>{active=false;clearTimeout(timer)};
  },[pair,pairStatus,expired]);
- return <section className="phone-connect pairing-connect" aria-label="Connect Android">
-  <h3><Smartphone size={18}/> Connect Android</h3>
-  <p>{paired?'Your phone is ready to sync.':'Scan in Worldwide on your phone. Same Wi-Fi.'}</p>
+ return <section className="phone-connect pairing-connect" aria-label="Connect phone">
+  <h3><Smartphone size={18}/> Connect phone</h3>
+  <p>{paired?'Your phone is ready to sync.':'Scan with your phone’s camera. Same Wi-Fi.'}</p>
   <div className={`pairing-code ${paired?'paired':expired?'expired':''}`}>
-   {busy?<LoaderCircle size={28} className="spinning" aria-label="Creating connection code"/>:paired?<div className="pairing-success"><Check size={42} strokeWidth={1.7}/><span>Phone connected</span></div>:pair&&!expired?<img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pair.qr)}`} alt="QR code to connect Worldwide on Android" width={200} height={200}/>:<span>{expired?'Code expired':'No connection code'}</span>}
+   {busy?<LoaderCircle size={28} className="spinning" aria-label="Creating connection code"/>:paired?<div className="pairing-success"><Check size={42} strokeWidth={1.7}/><span>Phone connected</span></div>:pair&&!expired?<img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pair.qr)}`} alt="QR code to open Worldwide on your phone" width={200} height={200}/>:<span>{expired?'Code expired':'No connection code'}</span>}
   </div>
   {error?<p className="editor-error" role="alert">{error}</p>:<p className="pairing-status" role="status">{busy?'Preparing your code…':paired?'Photos sync while your computer is running.':expired?'Create a new code to connect.':'One use · expires in 3 minutes'}</p>}
   <button className="button pairing-refresh" disabled={busy} onClick={()=>address?void generate(address):void load()}><RotateCw size={16}/>{paired?'Connect another phone':expired?'Create new code':error?'Try again':'Refresh QR code'}</button>
   <details className="pairing-manual"><summary>Enter address manually</summary>
    {urls.length>1&&<label>Network address<select aria-label="Computer network address" value={address} disabled={busy} onChange={event=>{setAddress(event.target.value);setCopied(false);void generate(event.target.value)}}>{urls.map(url=><option key={url}>{url}</option>)}</select></label>}
    {address?<div className="phone-address"><span>{address}</span><button className="icon-button" aria-label="Copy computer address" onClick={async()=>{try{await navigator.clipboard.writeText(address);setCopied(true)}catch{setError('Select and copy the address above.')}}}>{copied?<Check size={17}/>:<Copy size={17}/>}</button></div>:<p>Connect this computer to Wi-Fi first.</p>}
-   <p>Enter this address on your phone and sign in.</p>
+   <p>Open this address in your phone’s browser and sign in.</p>
   </details>
  </section>;
 }
