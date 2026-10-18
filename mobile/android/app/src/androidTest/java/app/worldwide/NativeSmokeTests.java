@@ -23,7 +23,7 @@ public class NativeSmokeTests extends Instrumentation {
     private Bundle args;
     @Override public void onCreate(Bundle value){args=value;start();}
     @Override public void onStart(){Bundle report=new Bundle();MainActivity activity=null;try{
-        if("true".equals(args.getString("widgetOnly"))){WidgetSmokeTests.run(this);report.putString("stream","Transparent widget, country selection, offline photos, resize and privacy passed.\n");finish(-1,report);return;}
+        if("true".equals(args.getString("widgetOnly"))){WidgetSmokeTests.run(this);report.putString("stream","Transparent atlas widget: taps, photo cycling, responsive layouts, wallpaper previews and privacy passed.\n");finish(-1,report);return;}
         if("true".equals(args.getString("releaseRetention"))){ReleaseRetentionProof.run(this,args);report.putString("stream","Signed Worldwide release retained account settings and offline photo.\n");finish(-1,report);return;}
         if("true".equals(args.getString("updateOnly"))){UpdateSmokeTests.run(this,args);report.putString("stream","Android updater validation and data retention passed.\n");finish(-1,report);return;}
         // JourneyApps' published POM omits its AndroidX runtime camera helpers.

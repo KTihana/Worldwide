@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:id="@+id/widget_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="56dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_title"
+                style="@style/WidgetTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:text="Worldwide" />
+
+            <TextView
+                android:id="@+id/widget_subtitle"
+                style="@style/WidgetSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="Your places, close to home" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/widget_open"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/widget_brand_ripple"
+            android:contentDescription="Open Worldwide"
+            android:padding="11dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/worldwide_icon" />
+    </LinearLayout>
+
+    <ViewFlipper
+        android:id="@+id/widget_stage"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        android:animateFirstView="false"
+        android:autoStart="false">
+
+        <FrameLayout
+            android:id="@+id/widget_world"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <ImageView
+                android:id="@+id/widget_map"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="World map"
+                android:scaleType="fitXY" />
+
+            <LinearLayout
+                android:id="@+id/widget_grid"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/widget_detail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_photo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="Country photo"
+                android:scaleType="fitXY"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/widget_photo_scrim"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/widget_photo_scrim"
+                android:importantForAccessibility="no"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/widget_empty_map"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="Selected country map"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/widget_empty_text"
+                style="@style/WidgetEmptyText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:layout_marginBottom="8dp"
+                android:gravity="center"
+                android:text="No photos yet"
+                android:visibility="gone" />
+
+            <FrameLayout
+                android:id="@+id/widget_country_inset"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="8dp"
+                android:background="@drawable/widget_inset_background"
+                android:padding="7dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/widget_country_map"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="Country locator map"
+                    android:scaleType="fitCenter" />
+            </FrameLayout>
+        </FrameLayout>
+    </ViewFlipper>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/widget_back"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/widget_control_ripple"
+            android:contentDescription="Back to world map"
+            android:padding="12dp"
+            android:src="@drawable/widget_chevron_left"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_hint"
+            style="@style/WidgetHint"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:text="Explore memories" />
+
+        <ImageButton
+            android:id="@+id/widget_next"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/widget_control_ripple"
+            android:contentDescription="Next country with photos"
+            android:padding="12dp"
+            android:src="@drawable/widget_chevron_right" />
+    </LinearLayout>
+</LinearLayout>

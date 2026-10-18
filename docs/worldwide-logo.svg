@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="96" viewBox="0 0 360 96" fill="none" role="img" aria-labelledby="title">
+  <title id="title">Worldwide</title>
+  <g transform="translate(8 16) scale(2.666667)" fill="none" stroke="#416d56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.54 15H17a2 2 0 0 0-2 2v4.54"></path><path d="M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17"></path><path d="M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05"></path><circle cx="12" cy="12" r="10"></circle></g>
+  <text x="90" y="65" fill="#416d56" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" font-size="48" font-weight="650" letter-spacing="-1.8">Worldwide</text>
+</svg>

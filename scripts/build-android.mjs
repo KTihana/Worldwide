@@ -10,7 +10,9 @@ if(!existsSync(join(root,'dist/index.html')))throw new Error('Run npm run build 
 await mkdir(join(android,'app/src/main/assets'),{recursive:true});
 // Assets are rebuilt as a complete tree so old application bundles do not inflate the APK.
 const {rm}=await import('node:fs/promises');await rm(join(android,'app/src/main/assets/www'),{recursive:true,force:true});
-await cp(join(root,'dist'),join(android,'app/src/main/assets/www'),{recursive:true});
+// HTTP compression sidecars are for the web server, not Android assets.
+// AAPT expands .gz asset names, which otherwise collide with their originals.
+await cp(join(root,'dist'),join(android,'app/src/main/assets/www'),{recursive:true,filter:path=>!path.endsWith('.gz')&&!path.endsWith('.br')});
 await cp(join(root,'app/data/world.json'),join(android,'app/src/main/assets/widget-world.json'));
 if(process.argv.includes('--sync-only')){console.log('Worldwide web bundle copied into the Android app.');process.exit(0)}
 const sdk=[process.env.ANDROID_HOME,process.env.ANDROID_SDK_ROOT,join(homedir(),'Library/Android/sdk'),join(homedir(),'AppData/Local/Android/Sdk'),join(homedir(),'Android/Sdk')].find(path=>path&&existsSync(path));

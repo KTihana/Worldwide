@@ -7,7 +7,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application android:label="Worldwide" android:icon="@drawable/worldwide_icon" android:roundIcon="@drawable/worldwide_icon" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
         <receiver android:name=".MapWidgetProvider" android:exported="false" android:label="Worldwide map">
-            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/><action android:name="android.intent.action.WALLPAPER_CHANGED"/></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/map_widget_info"/>
         </receiver>
         <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">

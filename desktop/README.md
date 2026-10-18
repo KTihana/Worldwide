@@ -4,7 +4,7 @@ The installed desktop app includes its own server and database runtime. Users do
 
 ## Windows
 
-Run `Worldwide-Setup-0.1.2-x64.exe` to install, or `Worldwide-Portable-0.1.2-x64.exe` to run without an installer. The builds are currently unsigned; Windows may ask for confirmation because there is no publisher certificate. No cloud service is used.
+Run `Worldwide-Windows-Setup.exe` to install. The builds are currently unsigned; Windows may ask for confirmation because there is no publisher certificate. No cloud service is used.
 
 Create your account on the computer. Open **Your album → Connect Android**, then tap **Scan computer QR** in Worldwide on your phone. Scanning signs the phone into the same album; both devices must use the same Wi-Fi. The computer may show a Windows Firewall prompt; allow access on your private/home network so your phone can reach it. The computer and phone need a connection to sync; the downloaded phone album is viewable offline.
 

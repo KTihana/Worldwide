@@ -3,7 +3,7 @@ android {
     namespace 'app.worldwide'
     compileSdk 36
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 5; versionName '0.1.4'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
+    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 6; versionName '0.1.5'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
     // Disposable, separate package for update-retention tests; production identity is unchanged.
     if (providers.gradleProperty('worldwideUpdateTest').orNull == 'true') {
         defaultConfig {
