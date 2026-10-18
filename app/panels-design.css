@@ -95,6 +95,25 @@
 .empty-photos span{max-width:23ch;color:#28634d;font-size:14px;font-weight:620}
 .empty-photos small{max-width:25ch;color:#66776f;font-size:12px;font-weight:400;line-height:1.4}
 .photo-grid{gap:8px}
+.photo-cell{position:relative;min-width:0}
+.photo-cell .photo-thumb{display:block;width:100%}
+.photo-delete{
+  position:absolute;top:2px;right:2px;z-index:1;
+  display:grid;place-items:center;width:44px;height:44px;padding:0;
+  border:0;border-radius:50%;background:transparent;color:#344c41;
+  cursor:pointer;touch-action:manipulation;
+}
+.photo-delete::before{
+  content:"";position:absolute;inset:7px;border-radius:50%;
+  background:rgb(255 255 255 / 94%);box-shadow:0 1px 6px rgb(20 48 34 / 20%);
+  transition:background .15s,color .15s;
+}
+.photo-delete svg{position:relative;pointer-events:none}
+.photo-delete:hover:not(:disabled){color:#a33e36}
+.photo-delete:hover:not(:disabled)::before{background:#fff1ee}
+.photo-delete:focus-visible{outline:3px solid #82ad92;outline-offset:-3px}
+.photo-delete:disabled{opacity:.45;cursor:default}
+
 .photo-thumb{
   border-radius:10px;
   background:#e5ebe7;

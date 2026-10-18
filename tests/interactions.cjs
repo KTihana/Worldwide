@@ -34,7 +34,19 @@ app.whenReady().then(async()=>{try{
  const position=await js(`(()=>{const r=document.querySelector('.photo-editor-preview svg').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`);
  window.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...position});window.webContents.sendInputEvent({type:'mouseMove',x:position.x+40,y:position.y+40});window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x:position.x+40,y:position.y+40});
  await until(()=>js(`document.querySelector('.photo-editor-preview image').getAttribute('y')!==${JSON.stringify(before)}`),'photo moves within clip');
- await click('Save position');await until(()=>js(`!document.querySelector('.photo-editor-modal')`),'save crop');await click('Back to Europe');await click('Choose continent or country');await click('World');await until(()=>js(`document.querySelectorAll('[data-country]').length>200`),'return world');
+ await click('Save position');await until(()=>js(`!document.querySelector('.photo-editor-modal')`),'save crop');
+ assert.equal(await js(`document.querySelectorAll('.photo-delete').length`),2,'Every thumbnail has a delete shortcut');
+ assert.equal(await js(`!!document.querySelector('button button')`),false,'Delete controls are separate accessible buttons');
+ await window.webContents.capturePage().then(image=>require('node:fs').writeFileSync('/tmp/worldwide-photo-delete.png',image.toPNG()));
+ const deleteTarget=await js(`document.querySelector('.photo-cell .photo-thumb').dataset.photoId`);
+ await js(`document.querySelector('.photo-delete').click()`);await until(()=>js(`!!document.querySelector('.confirm-modal')`),'thumbnail delete confirmation');
+ assert.equal(await js(`!!document.querySelector('.lightbox-modal')`),false,'Deleting from a thumbnail does not open its photo');
+ await click('Cancel');assert.equal(await js(`document.querySelectorAll('.photo-delete').length`),2,'Cancel preserves photos');
+ await js(`document.querySelector('.photo-delete').click()`);await click('Delete photo');
+ await until(()=>js(`document.querySelectorAll('.photo-delete').length===1&&!document.querySelector('.confirm-modal')`),'thumbnail photo removed');
+ const remaining=await(await fetch(base+'/api/atlas',{headers:{cookie}})).json();
+ assert.equal(remaining.photos.length,1);assert.ok(remaining.photos.every(photo=>photo.id!==deleteTarget),'The shortcut deletes only the chosen photo');
+ await click('Back to Europe');await click('Choose continent or country');await click('World');await until(()=>js(`document.querySelectorAll('[data-country]').length>200`),'return world');
  const timing=await js(`new Promise(resolve=>{const spans=[];let previous=performance.now();function frame(now){spans.push(now-previous);previous=now;document.querySelector('.world-map').dispatchEvent(new WheelEvent('wheel',{deltaY:-6,clientX:700,clientY:450,bubbles:true,cancelable:true}));if(spans.length<45)requestAnimationFrame(frame);else resolve({average:spans.slice(5).reduce((a,b)=>a+b,0)/(spans.length-5),max:Math.max(...spans.slice(5))})}requestAnimationFrame(frame)})`);
  await click('Show whole world');await pause(400);
  await window.webContents.capturePage().then(image=>require('node:fs').writeFileSync('/tmp/worldwide-map-check.png',image.toPNG()));
@@ -44,5 +56,5 @@ app.whenReady().then(async()=>{try{
  await click('Check for updates');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Refresh to update')`),'new website available');
  assert.equal(await js(`window.worldwideRefreshSentinel`),'kept','An available update never reloads automatically');
  await click('Refresh to update');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Finish your current upload or edit')`),'refresh respects unsaved-work guard');assert.equal(await js(`window.worldwideRefreshSentinel`),'kept');
- assert.deepEqual(failures,[]);console.log('PASS: desktop continent/country picker, Antarctica, gallery pointer reorder, crop entry, updates. Wheel frame times:',timing);
+ assert.deepEqual(failures,[]);console.log('PASS: desktop continent/country picker, Antarctica, gallery pointer reorder, crop entry, thumbnail deletion/cancel, updates. Wheel frame times:',timing);
  }catch(error){console.error(error);process.exitCode=1}finally{window?.destroy();server?.kill();await pause(300);rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode||0)}});
