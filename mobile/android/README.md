@@ -17,6 +17,16 @@ Changes and uploads need a connection to the computer. The offline album is read
 
 The normal Android file picker handles photo uploads. Saving a map or photo opens Android's save dialog. No broad photo-library or storage permission is required.
 
+## Home-screen map widget
+
+Install the updated APK over the existing app, then long-press an empty part of your Android home screen and choose **Widgets → Worldwide → Worldwide map**. Drag it onto the wallpaper and resize it as you like. The widget has a transparent background.
+
+Tap a country to fit its map and display a photo saved on the phone. Tap the photo to cycle through that country’s pictures; **World** returns to the full map. **Next** browses countries with photos (or all countries if none are saved), which also helps with small countries. Map taps use small rectangular touch targets; zooming a nearby country makes smaller neighbours easier to select. Each widget keeps its own selection.
+
+Open Worldwide and let **Saved on this device** finish once. The widget then works offline and refreshes after the app saves changes. Countries without a downloaded photo show an explanation. Signing out or changing computers clears the widget’s private photos and selection along with the offline album. Photos placed on the home screen are visible to anyone who can see that screen.
+
+Verify with `node tests/android-widget.mjs` after `npm run build` and `npm run android:sync`. This uses only the separate `app.worldwide.widgettest` package on an emulator, verifies real widget binding and country tap dispatch, offline image display, transparency, resizing, independent selection and sign-out clearing, and writes a preview to `/tmp/worldwide-widget-preview.png`.
+
 ## Build
 
 Install Node.js, Java 21, and the Android SDK with platform API 36 and build tools 36.0.0. Android Studio can install the SDK. Set `JAVA_HOME` and `ANDROID_HOME` if they are not in a standard location.

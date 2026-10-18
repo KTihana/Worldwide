@@ -139,7 +139,7 @@ public class MainActivity extends Activity {
         }finally{connection.disconnect();}
     }
     private static byte[] readLimited(InputStream source,int limit) throws IOException{try(InputStream stream=source;ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[32768];int n;while((n=stream.read(buffer))!=-1){if(bytes.size()+n>limit)throw new IOException("This file is too large.");bytes.write(buffer,0,n);}return bytes.toByteArray();}}
-    private synchronized void clearAlbum(){generation++;prefs.edit().remove("cookie").remove("account").remove("offline-state").apply();File[] files=album.listFiles();if(files!=null)for(File file:files)file.delete();}
+    private synchronized void clearAlbum(){generation++;prefs.edit().remove("cookie").remove("account").remove("offline-state").apply();File[] files=album.listFiles();if(files!=null)for(File file:files)file.delete();MapWidgetProvider.clear(this);}
     private static class Pairing { final String origin,token;Pairing(String origin,String token){this.origin=origin;this.token=token;} }
     private static Pairing parsePairing(String value)throws Exception{
         if(value==null||value.length()>4096)throw new IOException("Scan the QR code shown in Worldwide on your computer.");
@@ -259,6 +259,7 @@ public class MainActivity extends Activity {
                 keep.add(photoKey(path)+".photo");keep.add(photoKey(path)+".mime");progress(++saved,photos.length());
             }
             synchronized(MainActivity.this){if(expected!=generation)throw new IOException("The album changed.");File[] files=album.listFiles();if(files!=null)for(File file:files)if(!keep.contains(file.getName()))file.delete();}
+            synchronized(MainActivity.this){if(expected==generation)MapWidgetProvider.refresh(MainActivity.this);}
             reply(id,new JSONObject().put("value",true));
         }catch(Exception error){fail(id,error);}});}
         @JavascriptInterface public void saveFile(String id,String name,String mime,String encoded){executor.execute(()->{try{

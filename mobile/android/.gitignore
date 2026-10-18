@@ -2,3 +2,4 @@
 **/build/
 local.properties
 app/src/main/assets/www/
+app/src/main/assets/widget-world.json
