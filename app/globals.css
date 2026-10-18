@@ -286,9 +286,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 
 /* Keep country controls outside the album, even when its photos make it tall. */
 @media(min-width:601px){
- .map-app:has(.country-modal) .map-zoom{right:auto;left:var(--left);flex-direction:row}
- .map-app:has(.country-modal) .map-zoom>span{width:1px;height:auto;margin:8px 3px}
- .map-app:has(.country-modal) .map-meta{display:none}
 }
 @media(max-width:1100px) and (min-width:601px){
  :root{--space:20px}
@@ -409,10 +406,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .account-card small{margin-top:20px}
  .wide-map-button{display:inline-flex}
  .landscape-tip{display:none}
- .map-app:has(.country-modal) .map-zoom{right:auto;left:var(--left);flex-direction:row}
- .map-app:has(.country-modal) .map-zoom>span{width:1px;height:auto;margin:8px 3px}
- .map-app:has(.country-modal) .top-controls{visibility:hidden}
- .map-app:has(.country-modal) .map-meta{display:none}
  .lightbox-image img{max-height:48dvh}
  .photo-editor-preview svg{height:40dvh;min-height:140px}
  .export-preview svg{height:42dvh}
@@ -428,8 +421,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .search-dock{width:160px}
  .region-dock{left:calc(var(--left) + 168px);max-width:120px}
  .region-selector select{max-width:75px}
- .map-app:has(.country-modal) .search-dock{width:140px}
- .map-app:has(.country-modal) .region-dock{left:calc(var(--left) + 148px);max-width:110px}
 }
 @media(prefers-reduced-motion:reduce){
  *,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
@@ -437,8 +428,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
 }
 @media(orientation:landscape) and (max-height:600px) and (max-width:620px){
- .map-app:has(.country-modal) .search-dock{visibility:hidden}
- .map-app:has(.country-modal) .region-dock{left:var(--left);max-width:140px}
 }
 
 /* A short-lived QR makes connecting the phone a single scan. */

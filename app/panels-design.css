@@ -1,0 +1,334 @@
+/* Album surfaces. The map and its chrome are styled in design.css. */
+.modal-backdrop{
+  background:rgb(23 39 33 / 32%);
+  backdrop-filter:blur(7px);
+  -webkit-backdrop-filter:blur(7px);
+}
+.modal-box{
+  background:#fff;
+  border:1px solid rgb(215 225 219 / 90%);
+  border-radius:24px;
+  box-shadow:0 24px 80px rgb(18 46 33 / 17%),0 2px 10px rgb(18 46 33 / 6%);
+  color:#20332d;
+}
+.modal-box button{min-height:44px}
+.modal-heading{margin-bottom:24px}
+.modal-heading h2{font-size:28px;font-weight:650;letter-spacing:-.045em;line-height:1.12}
+.modal-heading .icon-button,
+.country-header .icon-button,
+.lightbox-top .icon-button{border-radius:50%}
+
+/* The country album is an inspector beside the map. */
+.country-modal{
+  background:transparent;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  padding-top:calc(var(--top) + var(--control) + var(--gap));
+}
+.country-modal .modal-box{
+  width:var(--panel,360px);
+  max-height:calc(100dvh - var(--top) - var(--control) - var(--gap) - var(--bottom));
+  border-radius:22px;
+  box-shadow:0 20px 56px rgb(18 46 33 / 18%),0 2px 12px rgb(18 46 33 / 7%);
+}
+.country-panel{padding:24px}
+.country-header{align-items:flex-start;gap:8px;margin-bottom:24px}
+.country-header .country-region{
+  color:#66776f;
+  font-size:12px;
+  font-weight:550;
+  letter-spacing:0;
+  line-height:1.3;
+  margin:0 0 8px;
+  text-transform:none;
+}
+.country-header h2{
+  align-items:flex-start;
+  color:#20332d;
+  font-size:30px;
+  font-weight:670;
+  letter-spacing:-.05em;
+  line-height:1.08;
+  gap:9px;
+}
+.country-header .icon-button{color:#66776f}
+.country-header .country-save-button:hover,
+.country-header .icon-button:hover{color:#28634d;background:#eef4f0}
+.visit-toggle{
+  min-height:52px;
+  padding:12px 16px;
+  margin-bottom:24px;
+  background:#f6f8f7;
+  border:1px solid #e3eae6;
+  border-radius:14px;
+  font-size:13px;
+  font-weight:590;
+}
+.visit-toggle>span:first-child{color:#42594d;gap:12px}
+.visit-toggle.is-visited{background:#eaf3ee;border-color:#c9dfd2}
+.visit-toggle input{accent-color:#28634d}
+.photos-heading{margin-bottom:12px}
+.photos-heading h3{color:#20332d;font-size:16px;font-weight:650;letter-spacing:-.025em}
+.photos-heading h3 span{color:#66776f;font-size:12px;font-weight:500}
+.upload-button{padding:0 14px;min-height:44px;border-radius:11px;font-size:12px}
+.adjust-cover-button{color:#28634d;font-size:12px;font-weight:550;margin:-2px 0 8px}
+.photo-import-hint{color:#66776f;font-size:12px;line-height:1.5;margin:0 0 12px}
+.photo-drop-area{border-radius:15px}
+.photo-drop-area.has-photos{
+  padding:0;
+  border:0;
+  background:transparent;
+  border-radius:0;
+  max-height:48dvh;
+  scrollbar-color:#cad8d0 transparent;
+}
+.photo-drop-area.drag-over{background:#eaf3ed;outline:2px dashed #468262}
+.empty-photos{
+  min-height:172px;
+  border:1px dashed #b8cec0;
+  border-radius:15px;
+  background:#f6f9f7;
+  color:#537c63;
+  gap:12px;
+}
+.empty-photos:hover{background:#eef5f0;color:#28634d}
+.empty-photos span{max-width:23ch;color:#28634d;font-size:14px;font-weight:620}
+.empty-photos small{max-width:25ch;color:#66776f;font-size:12px;font-weight:400;line-height:1.4}
+.photo-grid{gap:8px}
+.photo-thumb{
+  border-radius:10px;
+  background:#e5ebe7;
+  touch-action:pan-y;
+  box-shadow:0 1px 3px rgb(20 48 34 / 9%);
+  transition:transform .25s var(--ease),box-shadow .25s var(--ease),opacity .2s;
+}
+.photo-thumb:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgb(20 48 34 / 15%)}
+.photo-thumb:focus-visible{outline:3px solid #82ad92;outline-offset:2px}
+.photo-thumb.photo-drop-target{outline:3px solid #28634d;outline-offset:2px}
+.cover-badge{
+  bottom:7px;
+  left:7px;
+  padding:6px 8px;
+  border-radius:7px;
+  background:rgb(255 255 255 / 95%);
+  color:#28634d;
+  font-size:10px;
+  font-weight:650;
+  box-shadow:0 1px 6px rgb(20 48 34 / 14%);
+}
+.country-details{margin-top:24px;padding-top:8px;border-top:1px solid #e5ebe7}
+.country-details summary{color:#60746a;font-size:12px;font-weight:570}
+.country-details summary:hover{color:#28634d}
+.visit-date,.travel-note{font-size:12px;color:#60746a}
+.visit-date input,.travel-note textarea{
+  border:1px solid #dce6df;
+  border-radius:10px;
+  background:#fff;
+  color:#20332d;
+  font-size:14px;
+}
+.travel-note textarea{background:#fbfcfb;line-height:1.55}
+
+/* Album collection: generous photo cards and clear country names. */
+.albums-modal .modal-box{max-width:850px;padding:32px}
+.album-grid{gap:16px}
+.album-card{
+  background:#fff;
+  border:1px solid #e4ebe6;
+  border-radius:16px;
+  box-shadow:0 2px 8px rgb(20 48 34 / 5%);
+  transition:transform .22s var(--ease),box-shadow .22s var(--ease),border-color .22s;
+}
+.album-card:hover{
+  transform:translateY(-3px);
+  border-color:#cbdcd0;
+  box-shadow:0 12px 28px rgb(20 48 34 / 12%);
+}
+.album-cover{height:172px;padding:20px;background:#edf3ef}
+.country-shape{color:#82aa91}
+.album-text{padding:16px 18px 18px;gap:5px}
+.album-text strong{font-size:16px;font-weight:650;letter-spacing:-.025em;color:#20332d}
+.album-text span{font-size:12px;color:#66776f}
+.album-empty{min-height:290px;color:#729480}
+.album-empty p{font-size:14px;color:#66776f}
+
+/* Keep the image central, with controls available against the dark surround. */
+.lightbox-modal{background:rgb(13 23 19 / 91%);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.lightbox-modal .modal-box{
+  width:min(100%,1000px);
+  max-height:calc(100dvh - 32px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  background:#17231e;
+  border:1px solid #35463c;
+  border-radius:18px;
+  box-shadow:0 24px 90px rgb(0 0 0 / 38%);
+  color:#f4f7f4;
+}
+.lightbox-top{padding:12px 18px;min-height:62px}
+.lightbox-top .eyebrow{color:#f3f7f4;font-size:13px;font-weight:600}
+.lightbox-top>div>span:last-child{color:#aebfb4;font-size:12px}
+.lightbox-top .icon-button{color:#dbe8de}
+.lightbox-top .icon-button:hover{background:#ffffff1d;color:#fff}
+.lightbox-image{min-height:0;flex:1;background:#0f1813;overflow:hidden}
+.lightbox-image img{max-height:min(68dvh,760px);max-width:100%;object-fit:contain}
+.lightbox-prev,.lightbox-next{
+  width:48px;
+  height:48px;
+  border-radius:50%;
+  background:rgb(255 255 255 / 91%);
+  color:#20332d;
+  box-shadow:0 4px 20px rgb(0 0 0 / 20%);
+}
+.lightbox-prev:hover,.lightbox-next:hover{background:#fff}
+.lightbox-info{padding:16px 20px 20px;background:#1d2b23}
+.caption-editor input{border-bottom:1px solid #576b5f;color:#fff;font-size:14px}
+.caption-editor input::placeholder{color:#a7b8ad}
+.caption-editor .text-button{color:#c4dfca}
+.lightbox-actions{margin-top:14px}
+.lightbox-actions .button:not(.primary){background:#34443a;color:#e8f0e9;border-color:#506156}
+.lightbox-actions .button:not(.primary):hover{background:#405448}
+.lightbox-actions .icon-button{color:#d5e2d8}
+.lightbox-actions .icon-button:hover{background:#ffffff1d}
+.lightbox-actions .icon-button.danger:hover{color:#ffd7ce;background:#723a36}
+
+/* The crop editor is a clean work surface around the actual country mask. */
+.photo-editor-modal .modal-box{max-width:760px;padding:32px}
+.photo-editor-preview{
+  padding:20px;
+  border:1px solid #e0e8e2;
+  border-radius:17px;
+  background:#f2f6f3;
+}
+.photo-editor-preview svg{height:clamp(210px,44dvh,420px)}
+.editor-hint{font-size:12px;color:#66776f;margin-top:12px}
+.photo-zoom{color:#405a49;font-size:13px;font-weight:570;margin:16px 0}
+.photo-zoom input{accent-color:#28634d}
+.photo-zoom>span:last-child{width:42px;color:#66776f;font-size:12px;font-variant-numeric:tabular-nums}
+.editor-actions{margin-top:24px}
+.reset-photo{color:#49775b}
+.editor-error{color:#a8463d;font-size:12px}
+
+/* Export preview looks like the finished image on a gallery mat. */
+.export-map-modal .modal-box{max-width:830px;padding:32px}
+.export-scope{font-size:13px;font-weight:560;color:#52685b}
+.export-scope select{min-height:46px;border-color:#dce6df;border-radius:11px;font-size:13px;color:#20332d}
+.export-preview{
+  padding:24px;
+  border:1px solid #e0e8e2;
+  border-radius:17px;
+  background:#f0f4f1;
+}
+.export-preview svg{height:300px;filter:drop-shadow(0 5px 12px rgb(32 51 45 / 10%))}
+.export-format{font-size:11px;color:#66776f}
+.export-actions{margin-top:24px}
+.export-actions>span{color:#66776f;font-size:12px}
+
+.confirm-modal .modal-box{max-width:420px;padding:32px}
+.confirm-modal h2{color:#20332d;font-size:25px;font-weight:650;letter-spacing:-.04em}
+.confirm-modal p{color:#66776f;font-size:13px}
+.map-styles-modal .modal-box{padding:32px}
+.map-style-card{border-radius:14px;background:#f7f9f7}
+.toast{
+  padding:6px 6px 6px 16px;
+  border:1px solid rgb(255 255 255 / 12%);
+  border-radius:13px;
+  background:#203b2e;
+  color:#fff;
+  box-shadow:0 12px 30px rgb(22 47 32 / 23%);
+  font-size:12px;
+}
+.toast button{min-width:44px;min-height:44px;color:#d7e7db}
+
+@media(max-width:600px) and (orientation:portrait){
+  .country-modal{padding:0;align-items:flex-end}
+  .country-modal .modal-box{
+    width:100%;
+    max-height:52dvh;
+    border-radius:24px 24px 0 0;
+    border-bottom:0;
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    animation:panel-in .3s var(--ease);
+  }
+  .country-panel{padding:22px 20px 24px}
+  .country-header h2{font-size:29px}
+  .photo-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .photo-drop-area.has-photos{max-height:36dvh}
+  .albums-modal .modal-box,.photo-editor-modal .modal-box,
+  .export-map-modal .modal-box,.map-styles-modal .modal-box{padding:22px 20px}
+  .album-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .album-cover{height:132px;padding:14px}
+  .album-text{padding:12px;gap:4px}
+  .album-text strong{font-size:14px}
+  .album-text span{font-size:11px}
+  .modal-heading h2{font-size:25px}
+  .lightbox-modal{padding:0}
+  .lightbox-modal .modal-box{width:100%;height:100dvh;max-height:100dvh;border-radius:0;border:0}
+  .lightbox-image img{max-height:100%;max-width:100%}
+  .lightbox-info{padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+  .lightbox-prev{left:8px}.lightbox-next{right:8px}
+  .photo-editor-preview,.export-preview{padding:12px}
+  .photo-editor-preview svg{height:35dvh;min-height:180px}
+  .export-preview svg{height:220px}
+  .photo-zoom{margin:12px 0}
+  .editor-actions{flex-wrap:wrap}
+  .editor-actions .button{flex:1}
+  .editor-actions .reset-photo{width:100%;justify-content:flex-start}
+  .confirm-modal .modal-box{padding:24px}
+}
+@media(orientation:landscape) and (max-height:600px) and (max-width:1100px){
+  .country-modal{padding:calc(var(--top) + var(--control) + var(--gap)) var(--right) var(--bottom) var(--left);align-items:flex-start}
+  .country-modal .modal-box{
+    width:var(--panel,300px);
+    max-height:calc(100dvh - var(--top) - var(--control) - var(--gap) - var(--bottom));
+    height:auto;
+    border:1px solid #d7e1db;
+    border-radius:18px;
+    padding:0;
+    animation:slide-in .26s var(--ease);
+  }
+  .country-panel{padding:18px}
+  .country-header{margin-bottom:16px}
+  .country-header h2{font-size:27px}
+  .visit-toggle{margin-bottom:16px}
+  .photo-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .empty-photos{min-height:110px}
+  .photo-drop-area.has-photos{max-height:30dvh}
+  .albums-modal .modal-box,.photo-editor-modal .modal-box,.export-map-modal .modal-box,.map-styles-modal .modal-box{padding:20px}
+  .modal-heading{margin-bottom:16px}
+  .modal-heading h2{font-size:24px}
+  .album-cover{height:120px}
+  .lightbox-modal .modal-box{max-height:calc(100dvh - 12px)}
+  .lightbox-top{min-height:48px;padding:6px 14px}
+  .lightbox-image img{max-height:48dvh}
+  .lightbox-info{padding:8px 16px 12px}
+  .lightbox-actions{margin-top:4px}
+  .photo-editor-preview svg{height:36dvh;min-height:130px}
+  .export-preview svg{height:36dvh}
+}
+@media(max-width:600px){
+  .country-panel input,.country-panel textarea,
+  .lightbox-info input,.photo-editor-modal input,
+  .export-map-modal select{font-size:16px}
+  .country-panel button,.albums-modal button,
+  .lightbox-modal button,.photo-editor-modal button,
+  .export-map-modal button,.confirm-modal button{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+  .photo-thumb,.album-card{transition:none}
+}
+
+.photo-actions{display:flex;align-items:center;gap:8px}
+.photo-actions>.icon-button{background:#f0f5f2;color:#28634d;width:44px;height:44px;flex-shrink:0}
+.photo-actions>.icon-button:hover{background:#e4eee8}
+@media(max-width:600px),(orientation:landscape) and (max-height:600px){.photo-import-hint{display:none}}
+@media(orientation:landscape) and (max-height:600px) and (max-width:1100px){
+ .country-header .country-region{display:none}
+ .country-header{align-items:center;margin-bottom:12px}
+ .country-header h2{font-size:25px}
+ .visit-toggle{min-height:44px;padding:8px 12px;margin-bottom:16px}
+ .photos-heading{margin-bottom:12px}
+ .photo-actions{gap:4px}
+ .photo-actions .upload-button{padding:0 12px;font-size:12px}
+}

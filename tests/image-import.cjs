@@ -14,9 +14,17 @@ app.whenReady().then(async()=>{try{
  await until(async()=>{try{return(await fetch(base+'/api/health')).ok}catch{return false}},'server');
  const setup=await fetch(base+'/api/auth/setup',{method:'POST',headers:{origin:base,'Content-Type':'application/json'},body:JSON.stringify({email:'paste@example.test',password:'private paste test password'})});assert.equal(setup.status,200);const [name,...value]=setup.headers.get('set-cookie').split(';')[0].split('=');
  win=new BrowserWindow({show:false,width:1400,height:900,webPreferences:{contextIsolation:true,sandbox:true,backgroundThrottling:false}});await win.webContents.session.cookies.set({url:base,name,value:value.join('=')});
- await win.loadURL(base);await until(()=>js(`document.querySelectorAll('[data-country]').length>200`),'map');
+ // Hold the first album response so a fast drop cannot be silently discarded
+ // while the map is already visible but its saved records are still loading.
+ let releaseAtlas,heldAtlas=false;
+ win.webContents.session.webRequest.onBeforeRequest({urls:[base+'/api/atlas']},(_details,callback)=>{
+  if(!heldAtlas){heldAtlas=true;releaseAtlas=()=>callback({cancel:false});return}callback({cancel:false});
+ });
+ await win.loadURL(base);await until(()=>js(`document.querySelectorAll('[data-country]').length>200`),'map');await until(()=>Boolean(releaseAtlas),'initial album request');
  // Dropping an image directly onto the map opens and saves it in that country.
  await js(`(()=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob('${png}'),c=>c.charCodeAt(0))],'drop.png',{type:'image/png'}));document.querySelector('[data-country="HRV"]').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}))})()`);
+ assert.equal(await js(`(()=>{const event=new Event('worldwide-before-refresh',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented})()`),true,'Queued photos prevent an update refresh');
+ releaseAtlas();
  await until(()=>js(`document.querySelectorAll('[data-photo-id]').length===1&&!document.querySelector('.upload-button').disabled`),'file drop saved');
  // Real Electron Paste command with a system clipboard image, as after Copy image.
  await clipboard.write([new ClipboardItem({'image/png':new Blob([Buffer.from(png,'base64')],{type:'image/png'})})]);await js(`document.querySelector('.upload-button').focus()`);win.webContents.paste();
