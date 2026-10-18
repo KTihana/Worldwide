@@ -1,6 +1,6 @@
 # Worldwide for Android
 
-The personal Android installer is `../../releases/Worldwide-Android.apk`. It supports Android 8.0 and newer, opens in landscape, and bundles the complete map. It connects directly to the Windows app on your computer. No cloud account, certificate installation, or external service is involved.
+The personal Android installer is `../../releases/Worldwide-Android.apk`. It supports Android 8.0 and newer, opens upright for sign-in, switches the map to landscape, and bundles the complete map. It connects directly to the Windows app on your computer. No cloud account, certificate installation, or external service is involved.
 
 ## Install and connect
 

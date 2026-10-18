@@ -3,6 +3,7 @@ import {ArrowRight,LoaderCircle,Monitor,QrCode,Wifi} from 'lucide-react';
 import {configureNativeConnection,isNativeApp,nativeConnection,pairNativeQr,scanNativeQr,takeNativePairLink} from './native';
 import './connection.css';
 import {AccountFrame} from './account-frame';
+import {usePhoneOrientation} from './orientation';
 import {completeWebPairing,consumeWebPairingLink,type WebPairingLink} from './web-pairing';
 // Capture once, outside React's render/effect retries; never persist a pairing token.
 const initialWebLink=!isNativeApp()?consumeWebPairingLink(location,history):null;
@@ -11,6 +12,7 @@ export default function ConnectionGate({children}:{children:ReactNode}){
 }
 function WebConnectionGate({children}:{children:ReactNode}){
  const [link,setLink]=useState<WebPairingLink|null>(initialWebLink),[busy,setBusy]=useState(!!initialWebLink?.token),[error,setError]=useState(initialWebLink?.error||''),[retryable,setRetryable]=useState(true);
+ usePhoneOrientation(link?'portrait':null,20);
  const attempts=useRef(new Map<string,Promise<void>>()),generation=useRef(0);
  async function connect(value:WebPairingLink){
   if(!value.token){setBusy(false);setError(value.error);return;}
@@ -29,6 +31,7 @@ function WebConnectionGate({children}:{children:ReactNode}){
 function NativeConnectionGate({children}:{children:ReactNode}){
  const [initialLink]=useState(()=>isNativeApp()?takeNativePairLink():''),[editing,setEditing]=useState(()=>isNativeApp()&&(!nativeConnection()||!!initialLink));
  const [address,setAddress]=useState(nativeConnection),[manual,setManual]=useState(false),[busy,setBusy]=useState(false),[phase,setPhase]=useState(''),[error,setError]=useState('');
+ usePhoneOrientation(editing?'portrait':null,20);
  const working=useRef(false);
  async function finishPair(payload:string){setPhase('Connecting…');await pairNativeQr(payload);localStorage.removeItem('elsewhere-pending-logout');location.reload()}
  async function scan(payload?:string){if(working.current)return;working.current=true;setEditing(true);setBusy(true);setError('');setPhase(payload?'Connecting…':'Opening camera…');try{const value=payload||await scanNativeQr();if(value)await finishPair(value)}catch(error){setError((error as Error).message)}finally{working.current=false;setBusy(false);setPhase('')}}

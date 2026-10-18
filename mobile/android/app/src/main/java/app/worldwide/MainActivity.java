@@ -3,6 +3,7 @@ package app.worldwide;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -206,6 +207,19 @@ public class MainActivity extends Activity {
         ScanIntentResult scan=ScanIntentResult.parseActivityResult(result,intent);return scan.getContents()==null?"":scan.getContents();
     }
     private class Bridge {
+        @JavascriptInterface public void setOrientation(String mode){
+            final int requested;
+            if("portrait".equals(mode))requested=ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+            else if("landscape".equals(mode))requested=ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+            else return;
+            // Bridge calls arrive off the UI thread; ignore stale activity/page requests.
+            runOnUiThread(()->{
+                if(isFinishing()||isDestroyed()||web==null)return;
+                String url=web.getUrl();
+                if(url==null||!trusted(Uri.parse(url))||getRequestedOrientation()==requested)return;
+                setRequestedOrientation(requested);
+            });
+        }
         @JavascriptInterface public void checkUpdate(String id){executor.execute(()->{try{reply(id,new JSONObject().put("value",updater.check()));}catch(Exception error){fail(id,error);}});}
         @JavascriptInterface public void installUpdate(String id){
             if(!updateBusy.compareAndSet(false,true)){fail(id,new IOException("An update is already being prepared."));return;}

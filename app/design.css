@@ -117,3 +117,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
 @media(prefers-reduced-transparency:reduce){.search-field,.floating-button,.atlas-navigation,.map-meta-actions,.map-zoom,.search-results,.region-menu,.map-tooltip{background:#f9fcfa;backdrop-filter:none;-webkit-backdrop-filter:none}}
 @media(prefers-contrast:more){:root{--muted:#465b4e;--line:#889d90}.search-field,.floating-button,.atlas-navigation,.map-meta-actions,.map-zoom{border-color:#8da191;background:#fff}.country-border{stroke:#526c5c}}
+
+/* A browser can require a tap for wide-screen mode; the map remains usable upright. */
+.wide-map-prompt{display:none}
+@media(orientation:portrait) and (max-width:600px) and (pointer:coarse){
+ .wide-map-prompt{position:fixed;z-index:22;top:calc(var(--top) + 124px);left:50%;transform:translateX(-50%);display:block;max-width:calc(100vw - 48px)}
+ .wide-map-prompt button,.wide-map-prompt p{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border:1px solid #dce5df;border-radius:24px;background:#fff;color:#496b58;font-size:12px;line-height:1.4;box-shadow:0 3px 12px #20332d0a;white-space:nowrap}
+ body:has([role=dialog]) .wide-map-prompt{display:none}
+}

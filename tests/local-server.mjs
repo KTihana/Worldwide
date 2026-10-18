@@ -80,7 +80,7 @@ try{
  const invalid=new FormData();invalid.set('countryId','NZL');invalid.set('photo',new Blob(['invalid'],{type:'image/png'}),'fake.png');assert.equal((await request('/api/photos',{method:'POST',body:invalid})).status,400);
  const html=await(await fetch(base+'/')).text();assert.ok(!/signin-with/i.test(html));
  assert.match(html,/manifest.webmanifest/);
- const manifest=await(await fetch(base+'/manifest.webmanifest')).json();assert.equal(manifest.orientation,'landscape');
+ const manifest=await(await fetch(base+'/manifest.webmanifest')).json();assert.equal(manifest.orientation,'portrait-primary');
  assert.ok((await readFile(resolve(temp,'atlas.sqlite'))).length>0,'Database is a local file');
  assert.equal((await request('/api/auth/session')).data.canReset,true,'The hosting computer can reset its account');
  assert.equal((await post('/api/auth/pair-start',{serverUrl:base},{cookie:''})).status,401,'QR creation requires a signed-in account');
@@ -126,5 +126,5 @@ try{
  const resetAlbum=(await request('/api/atlas')).data;assert.equal(resetAlbum.photos.length,1,'Reset preserves photos');assert.equal(resetAlbum.visits.find(v=>v.countryId==='HRV').note,'Existing album','Reset preserves the existing album');assert.deepEqual(Buffer.from((await request(`/api/photos/${ids[0]}`)).data),bytes,'Reset preserves uploaded photo bytes');
  assert.equal((await post('/api/auth/login',{identifier:credentials.username,password:credentials.password},{cookie:''})).status,401,'Previous password stops working');
  assert.equal((await post('/api/auth/login',{email:credentials.email,password:replacementPassword},{cookie:''})).status,200,'New password works');
- console.log('PASS: private account, preserved album, shared edits/photos, QR pairing and single-use tokens, trusted-PC reset and session revocation, landscape manifest, and origin protection.');
+ console.log('PASS: private account, preserved album, shared edits/photos, QR pairing and single-use tokens, trusted-PC reset and session revocation, portrait launch manifest, and origin protection.');
 }finally{await stop();await rm(temp,{recursive:true,force:true})}

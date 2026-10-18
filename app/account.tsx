@@ -3,12 +3,14 @@ import {LoaderCircle,LogOut,Smartphone,Copy,Check,X,RotateCw,ArrowRight,Download
 import {AppUpdates} from './updates';
 import {Modal} from './modal';
 import {AccountFrame} from './account-frame';
+import {isPhoneScreen,phoneOrientation,usePhoneOrientation} from './orientation';
 const Atlas=lazy(()=>import('./atlas'));
 class MapLoadBoundary extends Component<{children:ReactNode},{failed:boolean}>{
  state={failed:false};
  static getDerivedStateFromError(){return {failed:true}}
- render(){return this.state.failed?<AccountFrame compact><div className="account-form-copy"><h1>Let’s reopen your map</h1><p>Keep your computer running, then refresh.</p></div><button className="button primary account-submit" onClick={()=>location.reload()}>Refresh<RotateCw size={17}/></button></AccountFrame>:this.props.children}
+ render(){return this.state.failed?<MapRecovery/>:this.props.children}
 }
+function MapRecovery(){usePhoneOrientation('portrait',20);return <AccountFrame compact><div className="account-form-copy"><h1>Let’s reopen your map</h1><p>Keep your computer running, then refresh.</p></div><button className="button primary account-submit" onClick={()=>location.reload()}>Refresh<RotateCw size={17}/></button></AccountFrame>}
 import {isNativeApp,nativeConnection} from './native';
 import {clearOfflineAlbum,listenOffline,offlineAvailable,offlineState,readOfflineAccount,registerOffline,rememberOfflineAccount,retryOffline} from './offline';
 type Account={email:string;username?:string|null};
@@ -26,6 +28,7 @@ export default function AccountApp(){
  const usernameInput=useRef<HTMLInputElement>(null),confirmationInput=useRef<HTMLInputElement>(null);
  const [showPassword,setShowPassword]=useState(false);
  const [pending,setPending]=useState(false),[recovering,setRecovering]=useState(false),[menu,setMenu]=useState(false),[offlineSession,setOfflineSession]=useState(false);
+ usePhoneOrientation(session?.account&&!pending?'landscape':'portrait');
  const offline=useSyncExternalStore(listenOffline,offlineState,offlineState);
  const changeComputer=isNativeApp()?<button className="text-button" onClick={()=>window.dispatchEvent(new Event('worldwide-change-computer'))}>Change computer</button>:null;
  const load=async()=>{
@@ -55,12 +58,12 @@ export default function AccountApp(){
    const invalidUsername=!/^[a-z0-9_]{3,24}$/.test(normalizedUsername),mismatch=password!==passwordConfirmation;
    if(invalidUsername||mismatch){setFieldErrors({...(invalidUsername?{username:'Use 3–24 letters, numbers or underscores.'}:{}),...(mismatch?{passwordConfirmation:'Your passwords don’t match.'}:{})});(invalidUsername?usernameInput:confirmationInput).current?.focus();return}
   }
-  sessionRequest.current++;
+  const request=++sessionRequest.current;
   setPending(true);setError('');
   try{
    if(localStorage.getItem('elsewhere-pending-logout')==='1'){await auth('logout',{});localStorage.removeItem('elsewhere-pending-logout')}
    const result=await auth(recovering?'reset-local':session?.needsSetup?'setup':'login',recovering?{password}:session?.needsSetup?{email,username:normalizedUsername,password,passwordConfirmation}:{identifier:identifier.trim(),password});
-   if(!mounted.current)return;
+   if(!mounted.current||request!==sessionRequest.current)return;
    setOfflineSession(false);setPassword('');setPasswordConfirmation('');setShowPassword(false);setFieldErrors({});setRecovering(false);
    setSession({account:result.account,needsSetup:false,canSetup:session?.canSetup||false,canReset:session?.canReset||false});
    await rememberOfflineAccount(result.account.email,result.account.username);
@@ -89,7 +92,7 @@ export default function AccountApp(){
   </>}{changeComputer}<div className="account-form-footer"><LockKeyhole size={13}/><span>{session.needsSetup?'One account. Just for you.':'Private. Saved on your computer.'}</span></div>
  </AccountFrame>;
  return <><MapLoadBoundary><Suspense fallback={<AccountFrame compact><div className="account-loading"><LoaderCircle size={26} className="spinning" aria-label="Opening your map"/><h1>Opening your world</h1></div></AccountFrame>}><Atlas onAccount={()=>{setMenu(true);setError('')}}/></Suspense></MapLoadBoundary>
- <div className="landscape-tip"><RotateCw size={15}/><span>Turn sideways for the wide map</span></div>
+ {!menu&&<WideMapPrompt/>}
  {menu&&<Modal label="Your account" className="account-modal" onClose={()=>setMenu(false)}>
   <div className="account-sheet-heading"><div className="account-identity"><div className="account-avatar" aria-hidden="true">{(session.account.username||session.account.email).slice(0,1).toUpperCase()}</div><div><h2>Your album</h2><p className="account-email">{session.account.email}</p></div></div><button className="icon-button" aria-label="Close account" onClick={()=>setMenu(false)}><X size={21}/></button></div>
   <div className="account-settings-grid">
@@ -100,6 +103,13 @@ export default function AccountApp(){
   <div className="account-sheet-footer"><span><LockKeyhole size={12}/>Your album stays yours.</span><button className="button sign-out" disabled={pending} onClick={signOut}>{pending?<LoaderCircle size={15} className="spinning"/>:<LogOut size={15}/>} {pending?'Signing out…':'Sign out'}</button></div>
  </Modal>}
  </>;
+}
+
+function WideMapPrompt(){
+ const [pending,setPending]=useState(false),[fallback,setFallback]=useState(false),active=useRef(true);
+ useEffect(()=>{active.current=true;return()=>{active.current=false}},[]);
+ if(!isPhoneScreen())return null;
+ return <div className="wide-map-prompt">{fallback?<p role="status"><RotateCw size={15}/><span>Turn your phone sideways</span></p>:<button disabled={pending} onClick={async()=>{setPending(true);const opened=await phoneOrientation.requestWideMap();if(active.current){setFallback(!opened);setPending(false)}}}>{pending?<LoaderCircle size={15} className="spinning"/>:<RotateCw size={15}/>}<span>{pending?'Opening wide map…':'View wide map'}</span></button>}</div>;
 }
 
 function UsernameSettings({username,offline,onSaved}:{username:string;offline:boolean;onSaved:(account:Account)=>Promise<void>}){
