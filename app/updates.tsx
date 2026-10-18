@@ -5,8 +5,27 @@ import {checkNativeUpdate,installNativeUpdate,supportsStandalone,type NativeUpda
 // Capture the page's original entry assets before lazy country/map styles load.
 const loadedAssets=Array.from(document.querySelectorAll<HTMLScriptElement|HTMLLinkElement>('script[type="module"][src],link[rel="stylesheet"][href]')).map(element=>new URL(element instanceof HTMLScriptElement?element.src:element.href,location.href).pathname).sort();
 const loadedBuild=document.querySelector<HTMLMetaElement>('meta[name="worldwide-build"]')?.content||'';
+type DesktopProgress={progress:number|null;status:string};
+type DesktopBridge={checkUpdate:()=>Promise<NativeUpdateInfo>;installUpdate:()=>Promise<{status:string}>;onUpdateProgress:(callback:(value:DesktopProgress)=>void)=>()=>void};
+declare global{interface Window{WorldwideDesktop?:DesktopBridge}}
 export function AppUpdates(){
- return supportsStandalone()?<NativeUpdates/>:<WebsiteUpdates/>;
+ return window.WorldwideDesktop?<DesktopUpdates/>:supportsStandalone()?<NativeUpdates/>:<WebsiteUpdates/>;
+}
+function DesktopUpdates(){
+ const bridge=window.WorldwideDesktop!;
+ const [info,setInfo]=useState<NativeUpdateInfo|null>(null),[busy,setBusy]=useState(false),[installing,setInstalling]=useState(false),[message,setMessage]=useState(''),[progress,setProgress]=useState<number|null>(null);
+ const check=useCallback(async()=>{setBusy(true);setMessage('');try{setInfo(await bridge.checkUpdate())}catch(error){setMessage((error as Error).message||'Couldn’t check for updates. Try again.')}finally{setBusy(false)}},[bridge]);
+ useEffect(()=>{void check();return bridge.onUpdateProgress(value=>{setProgress(typeof value.progress==='number'?Math.max(0,Math.min(100,value.progress)):null);setMessage(value.status)})},[bridge,check]);
+ async function install(){
+  if(!window.dispatchEvent(new Event('worldwide-before-refresh',{cancelable:true}))){setMessage('Finish your current upload or edit first.');return}
+  setBusy(true);setInstalling(true);setProgress(null);setMessage('Preparing update…');
+  try{await bridge.installUpdate();setMessage('Installing update. Worldwide will reopen with your album.')}catch(error){setMessage((error as Error).message||'Couldn’t install the update. Try again.')}finally{setBusy(false);setInstalling(false);setProgress(null)}
+ }
+ return <div className="app-updates"><h3><RefreshCw size={17}/> Desktop updates</h3>
+  {info&&<p>Version {info.installedVersion} · {info.available?`${info.version} is available.`:'Up to date'}</p>}
+  <button className="button" disabled={busy} onClick={()=>void(info?.available?install():check())}>{busy?<RefreshCw size={16} className="spinning"/>:<RefreshCw size={16}/>} {busy?installing?progress===null?'Preparing…':`Downloading ${progress}%`:'Checking…':info?.available?'Install update':'Check for updates'}</button>
+  <p aria-live="polite">{message}</p><small>Your photos and account stay saved on this computer.</small>
+ </div>;
 }
 function NativeUpdates(){
  const [info,setInfo]=useState<NativeUpdateInfo|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[progress,setProgress]=useState<number|null>(null);
