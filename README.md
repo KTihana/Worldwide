@@ -1,6 +1,6 @@
 # Worldwide
 
-Your private travel photo map, running on your computer and opened in a browser.
+Your private travel photo map, running on your computer and opened in a browser. Maps, accounts, and photos are stored locally; no AI or cloud service is required.
 
 1. Open **Start Worldwide** (`.cmd` on Windows, `.command` on Mac, `.sh` on Linux). It opens the website and keeps the server running in the background.
 2. On the computer, open **Your album → Connect phone**. Scan the QR code with your phone on the same Wi-Fi.

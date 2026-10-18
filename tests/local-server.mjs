@@ -39,7 +39,7 @@ try{
  assert.equal((await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,password:'incorrect password'})})).status,401);
 
  const terrain=await fetch(base+'/terrain/world-natural-earth.webp');assert.equal(terrain.status,200,'Terrain is served locally');assert.equal(terrain.headers.get('content-type'),'image/webp');assert.ok((await terrain.arrayBuffer()).byteLength>10000,'Local terrain has image data');
- assert.equal((await fetch(base+'/signin-with-chatgpt')).status,404,'ChatGPT sign-in is removed');
+ assert.equal((await fetch(base+'/signin-with-external-provider')).status,404,'External sign-in routes are unavailable');
  assert.equal((await request('/api/atlas',{headers:{origin:'https://example.org'}})).status,403,'Cross-origin reads blocked');
  assert.equal((await request('/api/countries/NZL',{method:'PATCH',headers:{origin:'https://example.org','Content-Type':'application/json'},body:'{"visited":true}'})).status,403,'Cross-origin writes blocked');
  assert.equal((await patch('BAD',{visited:true})).status,404);
@@ -76,7 +76,7 @@ try{
  assert.equal((await request('/api/atlas')).data.visits.find(v=>v.countryId==='NZL').coverId,ids[0],'Removing a cover chooses another local photo');
  assert.equal((await request(`/api/photos/${ids[1]}`)).status,404);
  const invalid=new FormData();invalid.set('countryId','NZL');invalid.set('photo',new Blob(['invalid'],{type:'image/png'}),'fake.png');assert.equal((await request('/api/photos',{method:'POST',body:invalid})).status,400);
- const html=await(await fetch(base+'/')).text();assert.ok(!/chatgpt|signin-with/i.test(html));
+ const html=await(await fetch(base+'/')).text();assert.ok(!/signin-with/i.test(html));
  assert.match(html,/manifest.webmanifest/);
  const manifest=await(await fetch(base+'/manifest.webmanifest')).json();assert.equal(manifest.orientation,'landscape');
  assert.ok((await readFile(resolve(temp,'atlas.sqlite'))).length>0,'Database is a local file');
