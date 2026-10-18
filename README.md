@@ -1,7 +1,7 @@
 <p align="center">
   <img src="docs/worldwide-logo.svg" width="320" alt="Worldwide">
 </p>
-<p align="center">Your private travel photo map.</p>
+<p align="center">Worldwide is a private travel map where you can mark visited countries, fill their shapes with photos, and keep a photo gallery for each country. Use it offline on your PC or phone, with optional sync between devices.</p>
 <p align="center">
   <a href="https://github.com/KTihana/Worldwide/releases/latest/download/Worldwide-Android.apk"><img src="docs/download-android.svg" width="244" height="56" alt="Download Worldwide for Android"></a>
   &nbsp;
