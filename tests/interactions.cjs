@@ -41,6 +41,12 @@ app.whenReady().then(async()=>{try{
  const deleteTarget=await js(`document.querySelector('.photo-cell .photo-thumb').dataset.photoId`);
  await js(`document.querySelector('.photo-delete').click()`);await until(()=>js(`!!document.querySelector('.confirm-modal')`),'thumbnail delete confirmation');
  assert.equal(await js(`!!document.querySelector('.lightbox-modal')`),false,'Deleting from a thumbnail does not open its photo');
+ const deleteColors=await js(`(()=>{const button=document.querySelector('.confirm-modal .danger-button'),style=getComputedStyle(button);return {text:style.color,background:style.backgroundColor,hovered:button.matches(':hover')}})()`);
+ const luminance=color=>color.match(/[\d.]+/g).slice(0,3).map(Number).map(value=>{value/=255;return value<=.04045?value/12.92:((value+.055)/1.055)**2.4}).reduce((total,value,index)=>total+value*[.2126,.7152,.0722][index],0);
+ const textLuminance=luminance(deleteColors.text),backgroundLuminance=luminance(deleteColors.background);
+ assert.equal(deleteColors.hovered,false,'Check the default state without hovering');assert.ok((Math.max(textLuminance,backgroundLuminance)+.05)/(Math.min(textLuminance,backgroundLuminance)+.05)>=4.5,'Delete text stays readable without hovering');
+ await pause(250);await window.webContents.capturePage().then(image=>require('node:fs').writeFileSync('/tmp/worldwide-delete-confirmation.png',image.toPNG()));
+
  await click('Cancel');assert.equal(await js(`document.querySelectorAll('.photo-delete').length`),2,'Cancel preserves photos');
  await js(`document.querySelector('.photo-delete').click()`);await click('Delete photo');
  await until(()=>js(`document.querySelectorAll('.photo-delete').length===1&&!document.querySelector('.confirm-modal')`),'thumbnail photo removed');

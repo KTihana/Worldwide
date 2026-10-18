@@ -47,8 +47,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .text-button{min-height:44px;padding:8px 0;font-size:12px;color:#587a62}
 .danger{color:#a17760}
 .danger:hover{background:#f7ece4}
-.danger-button{background:#9b725b;border-color:#9b725b;color:#fff}
-.danger-button:hover{background:#845d47;border-color:#845d47}
+.button.danger-button{background:#a33e36;border-color:#a33e36;color:#fff}
+.button.danger-button:hover{background:#8e332c;border-color:#8e332c;color:#fff}
+.button.danger-button:active{background:#7e2c26;border-color:#7e2c26;color:#fff}
 .floating-button{width:var(--control);height:var(--control);display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);color:#5d7866}
 .floating-button:hover{background:var(--surface-hover)}
 

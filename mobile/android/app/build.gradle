@@ -3,7 +3,7 @@ android {
     namespace 'app.worldwide'
     compileSdk 36
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 9; versionName '0.1.8'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
+    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 10; versionName '0.1.9'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
     if (providers.gradleProperty('worldwideNativeTest').orNull == 'true') {
         defaultConfig { applicationId 'app.worldwide.nativetest' }
     }
