@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 const lifetime=30*24*60*60;
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 const cookieName='elsewhere_session';
-type Account={id:string;email:string;username:string|null;password_hash:string;recovery_hash:string};
+type Account={id:string;email:string;username:string|null;album_id:string;password_hash:string;recovery_hash:string};
 const pairingLifetime=3*60*1000;
 const pairings=new Map<string,{accountId:string;expiresAt:number;used:boolean}>();
 function forgetPairings(accountId:string){for(const [key,value] of pairings)if(value.accountId===accountId||value.expiresAt<=Date.now())pairings.delete(key)}
@@ -19,7 +19,7 @@ export function sameOrigin(request:Request){
 }
 export function currentAccount(request:Request){
  const token=cookie(request);if(!/^[a-f0-9]{64}$/.test(token))return null;
- return db.prepare('SELECT a.id,a.email,a.username FROM sessions s JOIN accounts a ON a.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(digest(token),Date.now()).first<{id:string;email:string;username:string|null}>();
+ return db.prepare('SELECT a.id,a.email,a.username,a.album_id as albumId FROM sessions s JOIN accounts a ON a.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(digest(token),Date.now()).first<{id:string;email:string;username:string|null;albumId:string}>();
 }
 export function requireAccount(request:Request){sameOrigin(request);const account=currentAccount(request);if(!account)throw new ApiError('Please sign in to your album.',401);return account.id}
 function rateLimit(key:string,limit:number){
@@ -48,7 +48,7 @@ function signIn(request:Request,id:string,extra:Record<string,unknown>={}){
  const token=randomBytes(32).toString('hex');
  db.prepare('DELETE FROM sessions WHERE expires_at<?').bind(Date.now()).run();
  db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(digest(token),id,Date.now()+lifetime*1000).run();
- const account=db.prepare('SELECT email,username FROM accounts WHERE id=?').bind(id).first<{email:string;username:string|null}>()!;
+ const account=db.prepare('SELECT email,username,album_id as albumId FROM accounts WHERE id=?').bind(id).first<{email:string;username:string|null;albumId:string}>()!;
  return Response.json({account,...extra},{headers:{'Set-Cookie':sessionCookie(request,token),'Cache-Control':'no-store'}});
 }
 export async function authRoute(request:Request,action:string,localConnection:boolean,clientAddress:string,pairingOrigins:string[]=[]){
@@ -77,7 +77,7 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   const accountId=requireAccount(request),name=username(body.username);
   if(db.prepare('SELECT id FROM accounts WHERE username=? COLLATE NOCASE AND id<>?').bind(name,accountId).first())throw new ApiError('This username is already taken.',409);
   db.prepare('UPDATE accounts SET username=? WHERE id=?').bind(name,accountId).run();
-  const account=db.prepare('SELECT email,username FROM accounts WHERE id=?').bind(accountId).first<{email:string;username:string|null}>()!;
+  const account=db.prepare('SELECT email,username,album_id as albumId FROM accounts WHERE id=?').bind(accountId).first<{email:string;username:string|null;albumId:string}>()!;
   return Response.json({account},{headers:{'Cache-Control':'no-store'}});
  }
  if(action==='pair-start'){
@@ -139,7 +139,7 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   // The existing album already belongs to "local". Attaching this account
   // preserves every photo key, cover, note, and visited country in place.
   if(db.prepare('SELECT id FROM accounts LIMIT 1').first())throw new ApiError('An account already exists. Please sign in.',409);
-  db.prepare('INSERT INTO accounts(id,email,username,password_hash,recovery_hash,created_at) VALUES(?,?,?,?,?,?)').bind('local',address,name,encoded,digest(recoveryCode),new Date().toISOString()).run();
+  db.prepare('INSERT INTO accounts(id,email,username,album_id,password_hash,recovery_hash,created_at) VALUES(?,?,?,?,?,?,?)').bind('local',address,name,randomBytes(16).toString('hex'),encoded,digest(recoveryCode),new Date().toISOString()).run();
   return signIn(request,'local');
  }
  const account=db.prepare('SELECT * FROM accounts WHERE email=? COLLATE NOCASE').bind(address).first<Account>();

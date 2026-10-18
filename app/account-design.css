@@ -244,3 +244,13 @@
  .account-setup-form>.account-submit,.account-setup-form>.editor-error{grid-column:1/-1}
  .account-setup .account-field-hint,.account-setup .account-field-error{font-size:12px;line-height:1.4}
 }
+
+/* The native album is complete on this phone; computer sync is optional. */
+.account-modal .native-sync-section .button.primary{background:#28634d;border-color:#28634d;color:#fff}
+.account-modal .native-sync-section .button.primary:hover{background:#20533f;border-color:#20533f}
+.account-modal .native-sync-section p+p{margin-top:10px}
+.account-modal .native-sync-status{color:#496b58;font-weight:550}
+.native-sync-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:18px}
+.native-sync-actions .text-button{font-size:12px;min-height:44px}
+.account-modal .native-sync-section .native-sync-note{margin-top:14px;color:#718078;font-size:12px}
+.map-meta .sync-indicator[data-local-album]{display:flex;font-size:12px}

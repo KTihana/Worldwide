@@ -1,5 +1,5 @@
 /** The Android bridge is exposed only to the app's bundled, trusted origin. */
-type Bridge={connection():string;request(id:string,request:string):void;configure(id:string,url:string):void;read(key:string):string;store(key:string,value:string):void;clearAlbum():void;syncAlbum(id:string,album:string):void;saveFile(id:string,name:string,mime:string,base64:string):void;scanQr(id:string):void;pairQr(id:string,payload:string):void;takePairLink():string;checkUpdate?(id:string):void;installUpdate?(id:string):void;setOrientation?(mode:string):void};
+type Bridge={connection():string;request(id:string,request:string):void;configure(id:string,url:string):void;read(key:string):string;store(key:string,value:string):void;clearAlbum():void;syncAlbum(id:string,album:string):void;saveFile(id:string,name:string,mime:string,base64:string):void;scanQr(id:string):void;pairQr(id:string,payload:string):void;takePairLink():string;checkUpdate?(id:string):void;installUpdate?(id:string):void;setOrientation?(mode:string):void;standalone?():boolean};
 type NativeReply={status?:number;headers?:Record<string,string>;body?:string;error?:string;value?:unknown};
 declare global {interface Window{WorldwideNative?:Bridge;worldwideNativeReply?:(id:string,response:NativeReply)=>void;worldwideNativeProgress?:(saved:number,total:number)=>void}}
 const callbacks=new Map<string,{resolve:(reply:NativeReply)=>void;reject:(error:Error)=>void}>();
@@ -7,6 +7,7 @@ const callbacks=new Map<string,{resolve:(reply:NativeReply)=>void;reject:(error:
 const pageId=crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`;
 let installed=false,sequence=0;
 export function isNativeApp(){return !!window.WorldwideNative}
+export function supportsStandalone(){try{return window.WorldwideNative?.standalone?.()===true}catch{return false}}
 export function setNativeOrientation(mode:'portrait'|'landscape'){const set=window.WorldwideNative?.setOrientation;if(!set)return false;try{set.call(window.WorldwideNative,mode);return true}catch{return false}}
 export function nativeConnection(){return window.WorldwideNative?.connection()||''}
 export function nativeUpdateAvailable(){return typeof window.WorldwideNative?.checkUpdate==='function'&&typeof window.WorldwideNative?.installUpdate==='function'}

@@ -41,7 +41,17 @@ public class MainActivity extends Activity {
     private WebView web;
     private SharedPreferences prefs;
     private File album;
+    private LocalAlbum local;
+    private final java.util.concurrent.ScheduledExecutorService syncExecutor=Executors.newSingleThreadScheduledExecutor();
+    private final java.util.concurrent.atomic.AtomicBoolean syncBusy=new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean connected=false;
+    private volatile String syncError="";
+    private volatile long lastSyncAttempt=0;
+    private volatile boolean destroyed=false;
     private final ExecutorService executor=Executors.newFixedThreadPool(4);
+    private final ExecutorService widgetExecutor=Executors.newSingleThreadExecutor();
+    private final java.util.concurrent.atomic.AtomicBoolean widgetBusy=new java.util.concurrent.atomic.AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicInteger widgetRevision=new java.util.concurrent.atomic.AtomicInteger();
     private volatile int generation=0;
     private ValueCallback<Uri[]> fileCallback;
     private byte[] pendingSave;
@@ -56,6 +66,14 @@ public class MainActivity extends Activity {
         prefs=getSharedPreferences("worldwide",MODE_PRIVATE);
         updater=new AndroidUpdater(this,(percent,status)->runOnUiThread(()->{if(web!=null)try{JSONObject detail=new JSONObject().put("progress",percent).put("status",status);web.evaluateJavascript("window.dispatchEvent(new CustomEvent('worldwide-update-progress',{detail:"+detail+"}))",null);}catch(Exception ignored){}}));
         album=new File(getFilesDir(),"album");album.mkdirs();
+        try{
+            JSONObject previous=new JSONObject(prefs.getString("account","{}"));JSONObject account=previous.optJSONObject("account");
+            String owner=account==null?"":account.optString("email");
+            if(!owner.isEmpty()&&prefs.getString("album-owner","").isEmpty())prefs.edit().putString("album-owner",owner.toLowerCase(Locale.ROOT)).commit();
+            Set<String> countryIds=new HashSet<>();for(MapWidgetProvider.Country country:MapWidgetProvider.countries(this))countryIds.add(country.id);
+            local=new LocalAlbum(album,!prefs.getString("album-owner","").isEmpty(),countryIds);
+        }catch(Exception error){throw new IllegalStateException("Your saved album could not be opened. No files were removed.",error);}
+        syncExecutor.scheduleWithFixedDelay(()->requestSync(false),5,15,java.util.concurrent.TimeUnit.SECONDS);
         receivePairLink(getIntent());
         web=new WebView(this);web.setBackgroundColor(Color.rgb(237,242,239));
         setContentView(web);
@@ -140,11 +158,51 @@ public class MainActivity extends Activity {
         }finally{connection.disconnect();}
     }
     private static byte[] readLimited(InputStream source,int limit) throws IOException{try(InputStream stream=source;ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[32768];int n;while((n=stream.read(buffer))!=-1){if(bytes.size()+n>limit)throw new IOException("This file is too large.");bytes.write(buffer,0,n);}return bytes.toByteArray();}}
-    private synchronized void clearAlbum(){generation++;prefs.edit().remove("cookie").remove("account").remove("offline-state").apply();File[] files=album.listFiles();if(files!=null)for(File file:files)file.delete();MapWidgetProvider.clear(this);}
+    // Legacy callers use this name for sign-out. The device-owned album is never erased.
+    private synchronized void clearAlbum(){generation++;connected=false;syncError="";prefs.edit().remove("cookie").remove("account").remove("candidate-server").remove("offline-state").commit();}
+    private synchronized String validateAlbumIdentity(String origin,JSONObject account)throws IOException{
+        String id=account.optString("albumId"),ownerId=prefs.getString("album-owner-id",""),owner=prefs.getString("album-owner","");
+        if(!id.matches("[a-f0-9]{32}"))throw new IOException("Update Worldwide on your computer before syncing. Your photos stay on this phone.");
+        if(!ownerId.isEmpty()&&!ownerId.equals(id))throw new IOException("This is a different computer album, even if its email is the same. Your phone album has not been merged.");
+        if(!owner.isEmpty()&&!owner.equalsIgnoreCase(account.optString("email").trim()))throw new IOException("This phone album belongs to "+owner+". Connect that account to keep the albums separate.");
+        // A legacy cache may learn its ID only from its previously configured computer.
+        if(ownerId.isEmpty()&&!owner.isEmpty()&&!origin.equals(prefs.getString("server","")))throw new IOException("Connect to the original computer once after updating Worldwide before changing its address. Your phone album is saved.");
+        return id;
+    }
+    private synchronized void link(String origin,String cookie,JSONObject account)throws Exception{
+        String email=account.optString("email").trim().toLowerCase(Locale.ROOT);
+        if(email.isEmpty()||email.length()>254||cookie==null||cookie.isEmpty())throw new IOException("The computer did not return a complete account session.");
+        String albumId=validateAlbumIdentity(origin,account);
+        JSONObject identity=new JSONObject().put("email",account.optString("email")).put("username",account.opt("username")==null?JSONObject.NULL:account.opt("username")).put("albumId",albumId);
+        boolean saved=prefs.edit().putString("server",origin).putString("cookie",cookie).putString("album-owner",email).putString("album-owner-id",albumId).putString("account",new JSONObject().put("account",identity).put("needsSetup",false).put("canSetup",false).put("canReset",false).toString()).remove("candidate-server").commit();
+        if(!saved)throw new IOException("The connection could not be saved. Your phone album is unchanged.");
+        generation++;connected=false;syncError="";lastSyncAttempt=0;
+    }
+    private synchronized JSONObject linkedAccount()throws Exception{
+        if(prefs.getString("cookie","").isEmpty()||prefs.getString("server","").isEmpty())return null;
+        return new JSONObject(prefs.getString("account","{}")).optJSONObject("account");
+    }
+    private synchronized JSONObject localStatus()throws Exception{
+        JSONObject account=linkedAccount();String last=prefs.getString("last-synced","");
+        return new JSONObject().put("paired",account!=null).put("connected",account!=null&&connected).put("pending",local.pending()).put("lastSynced",last.isEmpty()?JSONObject.NULL:last).put("error",syncError).put("account",account==null?JSONObject.NULL:account);
+    }
+    private static Result jsonResult(int status,JSONObject value){return new Result(status,"application/json",value.toString().getBytes(StandardCharsets.UTF_8),false);}
+    private synchronized JSONObject localSession()throws Exception{
+        JSONObject account=linkedAccount();boolean paired=account!=null;
+        if(account==null)account=new JSONObject().put("email","").put("username",JSONObject.NULL);
+        return new JSONObject().put("account",account).put("localOnly",!paired).put("connected",paired&&connected).put("needsSetup",false).put("canSetup",false).put("canReset",false);
+    }
     private static class Pairing { final String origin,token;Pairing(String origin,String token){this.origin=origin;this.token=token;} }
     private static Pairing parsePairing(String value)throws Exception{
         if(value==null||value.length()>4096)throw new IOException("Scan the QR code shown in Worldwide on your computer.");
         Uri uri=Uri.parse(value);
+        // The computer's QR also opens the local website with an ordinary camera.
+        // Accept that same link inside the app, without relaxing address validation.
+        if("http".equals(uri.getScheme())||"https".equals(uri.getScheme())){
+            String fragment=uri.getEncodedFragment();
+            if(fragment==null||!fragment.matches("worldwide-pair=[a-f0-9]{64}"))throw new IOException("This is not a Worldwide pairing QR code.");
+            return new Pairing(normalize(uri.buildUpon().fragment(null).build().toString()),fragment.substring("worldwide-pair=".length()));
+        }
         if(!"worldwide".equals(uri.getScheme())||!"pair".equals(uri.getAuthority())||uri.getFragment()!=null||!(uri.getPath()==null||uri.getPath().isEmpty())||!uri.getQueryParameterNames().equals(new HashSet<>(Arrays.asList("server","token")))||uri.getQueryParameters("server").size()!=1||uri.getQueryParameters("token").size()!=1)throw new IOException("This is not a Worldwide pairing QR code.");
         String server=uri.getQueryParameter("server"),token=uri.getQueryParameter("token");
         if(server==null||token==null||!token.matches("[a-f0-9]{64}"))throw new IOException("This pairing QR code is incomplete. Open a new code on your computer.");
@@ -162,10 +220,10 @@ public class MainActivity extends Activity {
         if(email.isEmpty()||email.length()>254||response.cookie==null||response.cookie.isEmpty())throw new IOException("Pairing was incomplete. Open a new QR code and try again.");
         synchronized(this){
             if(expected!=generation)throw new IOException("Your connection changed while pairing. Please scan again.");
-            // The previous server, session and photo cache survive every failed pairing attempt.
-            clearAlbum();
-            prefs.edit().putString("server",pairing.origin).putString("cookie",response.cookie).putString("account",new JSONObject().put("account",account).put("needsSetup",false).put("canSetup",false).toString()).commit();
+            // A failed or different-account pairing leaves every prior local record intact.
+            link(pairing.origin,response.cookie,account);
         }
+        requestSync(true);
         return new JSONObject().put("value",true);
     }
     private String photoKey(String path) throws Exception{byte[] digest=MessageDigest.getInstance("SHA-256").digest(path.getBytes(StandardCharsets.UTF_8));StringBuilder key=new StringBuilder();for(byte value:digest)key.append(String.format(Locale.ROOT,"%02x",value));return key.toString();}
@@ -175,29 +233,121 @@ public class MainActivity extends Activity {
         String type=path.equals("/api/atlas")?"application/json":new String(Files.readAllBytes(mimeFile.toPath()),StandardCharsets.UTF_8);if(!path.equals("/api/atlas")&&!type.startsWith("image/"))return null;
         return new Result(200,type,Files.readAllBytes(file.toPath()),true);
     }
-    private synchronized void saveCache(String path,Result response,int expected) throws Exception{
-        if(expected!=generation||response.status!=200||prefs.getString("cookie","").isEmpty())return;
-        String key=path.equals("/api/atlas")?"atlas.json":photoKey(path)+".photo";
-        File temporary=File.createTempFile("download-",".tmp",album);Files.write(temporary.toPath(),response.bytes);Files.move(temporary.toPath(),new File(album,key).toPath(),StandardCopyOption.REPLACE_EXISTING);
-        if(!path.equals("/api/atlas"))Files.write(new File(album,photoKey(path)+".mime").toPath(),response.mime.getBytes(StandardCharsets.UTF_8));
-    }
     private Result api(String path,String method,JSONObject headers,byte[] body,int expected,boolean image) throws Exception{
-        String origin=prefs.getString("server",""),cookie=prefs.getString("cookie","");if(origin.isEmpty())throw new IOException("Connect to your computer first.");
-        boolean photo=method.equals("GET")&&path.matches("/api/photos/[a-zA-Z0-9_-]+");
-        if(photo){Result saved=cached(path);if(saved!=null)return saved;}
+        if(headers==null)headers=new JSONObject();
         try{
-            Result response=network(origin,path,method,headers,body,cookie,expected);
-            synchronized(this){
-                if(expected!=generation||!origin.equals(prefs.getString("server","")))throw new IOException("The connection changed. Please try again.");
-                if(path.equals("/api/auth/logout")&&response.status==200){clearAlbum();return response;}
-                if(response.cookie!=null)prefs.edit().putString("cookie",response.cookie).apply();
+            if(path.equals("/api/auth/session")&&method.equals("GET")){requestSync(false);return jsonResult(200,localSession());}
+            if(path.equals("/api/local-status")&&method.equals("GET")){requestSync(false);return jsonResult(200,localStatus());}
+            if(path.equals("/api/local-sync")&&method.equals("POST")){requestSync(true);return jsonResult(200,localStatus());}
+            if(path.equals("/api/auth/logout")&&method.equals("POST")){clearAlbum();return jsonResult(200,new JSONObject().put("ok",true));}
+            LocalAlbum.Reply response=local.request(path,method,headers,body);
+            if(response!=null){
+                requestSync(!method.equals("GET"));
+                if(!method.equals("GET"))refreshWidgets();
+                return new Result(response.status,response.mime,response.bytes,false);
             }
-            if(method.equals("GET")&&(path.equals("/api/atlas")||photo)&&response.status==200)saveCache(path,response,expected);
-            return response;
-        }catch(IOException error){
-            if(expected==generation&&method.equals("GET")&&path.equals("/api/atlas")){Result saved=cached(path);if(saved!=null)return saved;}
-            throw new IOException("Couldn’t reach your computer. Keep Worldwide open there and connect to the same Wi-Fi.",error);
+            if(path.equals("/api/photos/import")&&prefs.getString("cookie","").isEmpty())return jsonResult(400,new JSONObject().put("error","Copy the image itself, or save it to Photos first."));
+            String origin,cookie;
+            synchronized(this){origin=prefs.getString(path.equals("/api/auth/login")?"candidate-server":"server",prefs.getString("server",""));cookie=path.equals("/api/auth/login")?"":prefs.getString("cookie","");}
+            if(origin.isEmpty())return jsonResult(400,new JSONObject().put("error","Connect to your computer to change account settings. Your phone album works without a connection."));
+            Result result=network(origin,path,method,headers,body,cookie,expected);
+            synchronized(this){
+                if(expected!=generation)throw new IOException("Your connection changed. Please try again.");
+                if(result.status==200&&path.equals("/api/auth/login")){
+                    JSONObject account=new JSONObject(new String(result.bytes,StandardCharsets.UTF_8)).optJSONObject("account");
+                    if(account==null)throw new IOException("The computer did not return an account.");link(origin,result.cookie,account);
+                }else if(result.status==200&&path.equals("/api/auth/username")){
+                    JSONObject account=new JSONObject(new String(result.bytes,StandardCharsets.UTF_8)).optJSONObject("account");
+                    if(account!=null)link(origin,cookie,account);
+                }
+            }
+            requestSync(true);return result;
+        }catch(LocalAlbum.ApiException error){return jsonResult(error.status,new JSONObject().put("error",error.getMessage()));}
+    }
+    private void refreshWidgets(){
+        widgetRevision.incrementAndGet();if(destroyed||!widgetBusy.compareAndSet(false,true))return;
+        try{widgetExecutor.execute(()->{
+            int rendered;
+            do{rendered=widgetRevision.get();MapWidgetProvider.refresh(getApplicationContext());}while(!destroyed&&rendered!=widgetRevision.get());
+            widgetBusy.set(false);
+            if(!destroyed&&rendered!=widgetRevision.get())refreshWidgets();
+        });}catch(java.util.concurrent.RejectedExecutionException ignored){widgetBusy.set(false);}
+    }
+    private void requestSync(boolean immediate){
+        synchronized(this){
+            if(destroyed||prefs.getString("cookie","").isEmpty()||prefs.getString("server","").isEmpty()||(!immediate&&System.currentTimeMillis()-lastSyncAttempt<30000)||!syncBusy.compareAndSet(false,true))return;
+            lastSyncAttempt=System.currentTimeMillis();
         }
+        try{syncExecutor.execute(()->{try{sync();}finally{syncBusy.set(false);}});}catch(java.util.concurrent.RejectedExecutionException ignored){syncBusy.set(false);}
+    }
+    private synchronized boolean sameConnection(int expected,String origin,String cookie){return !destroyed&&expected==generation&&origin.equals(prefs.getString("server",""))&&cookie.equals(prefs.getString("cookie",""));}
+    private static JSONObject parse(Result result)throws Exception{return new JSONObject(new String(result.bytes,StandardCharsets.UTF_8));}
+    private static void successful(Result response)throws Exception{
+        if(response.status>=200&&response.status<300)return;
+        String message="Couldn’t sync with the computer. Your changes are saved on this phone.";
+        try{message=parse(response).optString("error",message);}catch(Exception ignored){}
+        throw new IOException(message);
+    }
+    private void sync(){
+        final String origin,cookie;final int expected;
+        synchronized(this){origin=prefs.getString("server","");cookie=prefs.getString("cookie","");expected=generation;}
+        if(origin.isEmpty()||cookie.isEmpty())return;
+        try{
+            Result session=network(origin,"/api/auth/session","GET",new JSONObject(),new byte[0],cookie,expected);successful(session);
+            JSONObject identity=parse(session).optJSONObject("account");
+            if(identity==null)throw new IOException("Reconnect to your computer to resume sync. Your phone album is saved.");
+            synchronized(this){
+                if(!sameConnection(expected,origin,cookie))return;
+                String albumId=validateAlbumIdentity(origin,identity);
+                boolean pinned=prefs.edit().putString("album-owner-id",albumId).putString("album-owner",identity.optString("email").trim().toLowerCase(Locale.ROOT)).putString("account",new JSONObject().put("account",identity).put("needsSetup",false).put("canSetup",false).put("canReset",false).toString()).commit();
+                if(!pinned)throw new IOException("The computer album identity could not be saved. Your phone changes are waiting safely.");
+            }
+            // Replay only the journal head. A crash after a remote write safely retries its stable ID.
+            for(int count=0;count<1000;count++){
+                if(!sameConnection(expected,origin,cookie))return;
+                LocalAlbum.Mutation mutation=local.next();if(mutation==null)break;
+                if(mutation.path.equals("/api/photos")&&mutation.method.equals("POST")&&!local.containsPhoto(mutation.body.getString("id"))){
+                    Result visited=network(origin,"/api/countries/"+mutation.body.getString("countryId"),"PATCH",new JSONObject().put("content-type","application/json"),new JSONObject().put("visited",true).toString().getBytes(StandardCharsets.UTF_8),cookie,expected);successful(visited);
+                    synchronized(this){if(!sameConnection(expected,origin,cookie))return;local.acknowledge(mutation.id);}continue;
+                }
+                JSONObject headers=new JSONObject().put("content-type","application/json");byte[] bytes=mutation.body.toString().getBytes(StandardCharsets.UTF_8);
+                if(mutation.path.equals("/api/photos")&&mutation.method.equals("POST")){LocalAlbum.Upload upload=local.upload(mutation);headers.put("content-type",upload.contentType);bytes=upload.bytes;}
+                Result response=network(origin,mutation.path,mutation.method,headers,bytes,cookie,expected);
+                // A photo deleted on the PC wins over a queued caption/crop or repeat delete.
+                boolean gone=response.status==404&&mutation.path.matches("/api/photos/[a-zA-Z0-9_-]+")&&!mutation.path.endsWith("/order");
+                if(response.status==409&&mutation.path.equals("/api/photos/order")){
+                    Result remote=network(origin,"/api/atlas","GET",new JSONObject(),new byte[0],cookie,expected);successful(remote);
+                    JSONArray photos=parse(remote).getJSONArray("photos"),ids=new JSONArray(),desired=mutation.body.getJSONArray("ids");Set<String> available=new LinkedHashSet<>();
+                    for(int i=0;i<photos.length();i++){JSONObject photo=photos.getJSONObject(i);if(mutation.body.getString("countryId").equals(photo.getString("countryId")))available.add(photo.getString("id"));}
+                    for(int i=0;i<desired.length();i++)if(available.remove(desired.getString(i)))ids.put(desired.getString(i));for(String id:available)ids.put(id);
+                    JSONObject order=new JSONObject().put("countryId",mutation.body.getString("countryId")).put("ids",ids);
+                    response=network(origin,mutation.path,mutation.method,headers,order.toString().getBytes(StandardCharsets.UTF_8),cookie,expected);
+                }
+                if(response.status==400&&mutation.path.startsWith("/api/countries/")&&mutation.body.has("coverId")&&!mutation.body.isNull("coverId")){
+                    Result check=network(origin,"/api/photos/"+mutation.body.getString("coverId"),"GET",new JSONObject(),new byte[0],cookie,expected);
+                    if(check.status==404){JSONObject patch=new JSONObject(mutation.body.toString()).put("coverId",JSONObject.NULL);response=network(origin,mutation.path,mutation.method,headers,patch.toString().getBytes(StandardCharsets.UTF_8),cookie,expected);}
+                }
+                if(!gone)successful(response);
+                synchronized(this){if(!sameConnection(expected,origin,cookie))return;local.acknowledge(mutation.id);}
+            }
+            if(local.pending()!=0)return;
+            long revision=local.revision();Result response=network(origin,"/api/atlas","GET",new JSONObject(),new byte[0],cookie,expected);successful(response);JSONObject remote=parse(response);JSONArray photos=remote.getJSONArray("photos");
+            for(int i=0;i<photos.length();i++){
+                if(!sameConnection(expected,origin,cookie))return;String id=photos.getJSONObject(i).getString("id");
+                if(!local.hasPhoto(id)){
+                    Result photo=network(origin,"/api/photos/"+id,"GET",new JSONObject(),new byte[0],cookie,expected);
+                    if(photo.status==404)throw new IOException("The computer album changed during sync. Your phone changes are saved; sync will retry.");
+                    successful(photo);synchronized(this){if(!sameConnection(expected,origin,cookie))return;local.savePhoto(id,photo.mime,photo.bytes);}
+                }
+            }
+            synchronized(this){
+                if(!sameConnection(expected,origin,cookie))return;
+                // Never replace a local edit made while the network was fetching metadata/photos.
+                if(!local.acceptRemote(remote,revision))return;
+                local.prune();
+                connected=true;syncError="";prefs.edit().putString("last-synced",java.time.Instant.now().toString()).commit();if(local.revision()!=revision)refreshWidgets();
+            }
+        }catch(Exception error){synchronized(this){if(sameConnection(expected,origin,cookie)){connected=false;syncError=error.getMessage()==null?"Sync will retry. Your changes are saved on this phone.":error.getMessage();}}}
     }
     private void reply(String id,JSONObject result){runOnUiThread(()->{if(web!=null)web.evaluateJavascript("window.worldwideNativeReply?.("+JSONObject.quote(id)+","+result+")",null);});}
     private void fail(String id,Exception error){try{reply(id,new JSONObject().put("error",error.getMessage()==null?"Please try again.":error.getMessage()));}catch(Exception ignored){}}
@@ -207,6 +357,7 @@ public class MainActivity extends Activity {
         ScanIntentResult scan=ScanIntentResult.parseActivityResult(result,intent);return scan.getContents()==null?"":scan.getContents();
     }
     private class Bridge {
+        @JavascriptInterface public boolean standalone(){return true;}
         @JavascriptInterface public void setOrientation(String mode){
             final int requested;
             if("portrait".equals(mode))requested=ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
@@ -225,7 +376,7 @@ public class MainActivity extends Activity {
             if(!updateBusy.compareAndSet(false,true)){fail(id,new IOException("An update is already being prepared."));return;}
             executor.execute(()->{try{File file=updater.prepare();runOnUiThread(()->{try{if(isFinishing()||isDestroyed())throw new IOException("Open Worldwide again to install the update.");reply(id,new JSONObject().put("value",new JSONObject().put("status",AndroidUpdater.install(MainActivity.this,file))));}catch(Exception error){fail(id,error);}finally{updateBusy.set(false);}});}catch(Exception error){updateBusy.set(false);fail(id,error);}});
         }
-        @JavascriptInterface public String connection(){return prefs.getString("server","");}
+        @JavascriptInterface public String connection(){return prefs.getString("candidate-server",prefs.getString("server",""));}
         @JavascriptInterface public String takePairLink(){String value=pendingPairLink;pendingPairLink="";return value;}
         @JavascriptInterface public void scanQr(String id){runOnUiThread(()->{if(pendingScanId!=null){fail(id,new IOException("The camera is already open."));return;}pendingScanId=id;
             ScanOptions options=new ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Scan the QR code in Worldwide on your computer").setBeepEnabled(false).setBarcodeImageEnabled(false).setOrientationLocked(false);
@@ -236,7 +387,7 @@ public class MainActivity extends Activity {
             String origin=normalize(address);Result health=network(origin,"/api/health","GET",new JSONObject(),new byte[0],"",-1);
             JSONObject data=new JSONObject(new String(health.bytes,StandardCharsets.UTF_8));String app=data.optString("app");
             if(health.status!=200||!(app.equals("worldwide-local")||app.equals("elsewhere-local")))throw new IOException("This address is not a Worldwide computer.");
-            if(!origin.equals(connection())){MainActivity.this.clearAlbum();prefs.edit().putString("server",origin).commit();}
+            prefs.edit().putString("candidate-server",origin).commit();
             reply(id,new JSONObject().put("value",true));
         }catch(Exception error){fail(id,error);}});}
         @JavascriptInterface public void request(String id,String value){int expected=generation;executor.execute(()->{try{
@@ -263,19 +414,10 @@ public class MainActivity extends Activity {
             }catch(Exception ignored){}
         }}
         @JavascriptInterface public void clearAlbum(){MainActivity.this.clearAlbum();}
-        @JavascriptInterface public void syncAlbum(String id,String value){int expected=generation;executor.execute(()->{try{
-            JSONObject data=new JSONObject(value);JSONArray photos=data.getJSONArray("photos");Set<String> keep=new HashSet<>(Arrays.asList("atlas.json"));
-            saveCache("/api/atlas",new Result(200,"application/json",value.getBytes(StandardCharsets.UTF_8),false),expected);
-            int saved=0;progress(saved,photos.length());
-            for(int i=0;i<photos.length();i++){
-                if(expected!=generation)throw new IOException("The album changed.");String photo=photos.getJSONObject(i).getString("id");if(!photo.matches("[a-zA-Z0-9_-]+"))throw new IOException("Invalid photo.");
-                String path="/api/photos/"+photo;Result result=api(path,"GET",new JSONObject(),new byte[0],expected,true);if(result.status!=200)throw new IOException("Couldn’t save every photo. Reconnect and try again.");
-                keep.add(photoKey(path)+".photo");keep.add(photoKey(path)+".mime");progress(++saved,photos.length());
-            }
-            synchronized(MainActivity.this){if(expected!=generation)throw new IOException("The album changed.");File[] files=album.listFiles();if(files!=null)for(File file:files)if(!keep.contains(file.getName()))file.delete();}
-            synchronized(MainActivity.this){if(expected==generation)MapWidgetProvider.refresh(MainActivity.this);}
-            reply(id,new JSONObject().put("value",true));
-        }catch(Exception error){fail(id,error);}});}
+        @JavascriptInterface public void syncAlbum(String id,String value){
+            // Older web builds send a snapshot here. The native database owns it now.
+            requestSync(false);try{reply(id,new JSONObject().put("value",true));}catch(Exception error){fail(id,error);}
+        }
         @JavascriptInterface public void saveFile(String id,String name,String mime,String encoded){executor.execute(()->{try{
             byte[] data=Base64.decode(encoded,Base64.DEFAULT);if(data.length>40*1024*1024)throw new IOException("This image is too large to save.");
             runOnUiThread(()->{if(pendingSave!=null){fail(id,new IOException("Finish saving the current image first."));return;}pendingSave=data;pendingSaveId=id;
@@ -294,5 +436,6 @@ public class MainActivity extends Activity {
         }
     }
     @Override public void onBackPressed(){web.evaluateJavascript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))",null);}
-    @Override protected void onDestroy(){if(fileCallback!=null)fileCallback.onReceiveValue(null);executor.shutdownNow();web.removeJavascriptInterface("WorldwideNative");web.destroy();web=null;super.onDestroy();}
+    @Override protected void onDestroy(){if(fileCallback!=null)fileCallback.onReceiveValue(null);destroyed=true;generation++;syncExecutor.shutdownNow();widgetExecutor.shutdownNow();executor.shutdownNow();web.removeJavascriptInterface("WorldwideNative");web.destroy();web=null;
+        Thread close=new Thread(()->{try{executor.awaitTermination(Long.MAX_VALUE,java.util.concurrent.TimeUnit.NANOSECONDS);syncExecutor.awaitTermination(Long.MAX_VALUE,java.util.concurrent.TimeUnit.NANOSECONDS);local.close();}catch(InterruptedException ignored){Thread.currentThread().interrupt();}},"Worldwide album close");close.setDaemon(true);close.start();super.onDestroy();}
 }

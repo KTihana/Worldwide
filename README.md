@@ -26,7 +26,7 @@
 
 Sample album; phone layouts shown in a responsive browser. [Photo credit](docs/screenshots/README.md).
 
-Install on your computer, then open **Your album → Connect phone**. Use the same Wi-Fi. Your photos stay local.
+Use either app on its own. To sync them, open **Your album → Connect phone** on the computer and scan from the Android app. Use the same Wi-Fi. Photos and offline edits stay saved on each device.
 
 [Local website setup](docs/local-website.md) · [Desktop setup](desktop/README.md) · [Android setup](mobile/android/README.md)
 

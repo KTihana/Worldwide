@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState,useSyncExternalStore,lazy,Suspense,Component,type ReactNode} from 'react';
-import {LoaderCircle,LogOut,Smartphone,Copy,Check,X,RotateCw,ArrowRight,Download,Eye,EyeOff,LockKeyhole,AtSign} from 'lucide-react';
+import {LoaderCircle,LogOut,Smartphone,Copy,Check,X,RotateCw,ArrowRight,Download,Eye,EyeOff,LockKeyhole,AtSign,Globe2,Monitor} from 'lucide-react';
 import {AppUpdates} from './updates';
 import {Modal} from './modal';
 import {AccountFrame} from './account-frame';
@@ -11,16 +11,19 @@ class MapLoadBoundary extends Component<{children:ReactNode},{failed:boolean}>{
  render(){return this.state.failed?<MapRecovery/>:this.props.children}
 }
 function MapRecovery(){usePhoneOrientation('portrait',20);return <AccountFrame compact><div className="account-form-copy"><h1>Let’s reopen your map</h1><p>Keep your computer running, then refresh.</p></div><button className="button primary account-submit" onClick={()=>location.reload()}>Refresh<RotateCw size={17}/></button></AccountFrame>}
-import {isNativeApp,nativeConnection} from './native';
+import {isNativeApp,nativeConnection,supportsStandalone} from './native';
+import {listenLocalSync,localSyncState,refreshLocalSync,resetLocalSync,syncLocalNow,updateLocalSyncAccount,type LocalSyncStatus} from './local-sync';
 import {clearOfflineAlbum,listenOffline,offlineAvailable,offlineState,readOfflineAccount,registerOffline,rememberOfflineAccount,retryOffline} from './offline';
 type Account={email:string;username?:string|null};
-type Session={account:Account|null;needsSetup:boolean;canSetup:boolean;canReset:boolean};
+type Session={account:Account|null;needsSetup:boolean;canSetup:boolean;canReset:boolean;localOnly?:boolean;connected?:boolean};
 async function auth(path:string,body?:unknown){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),['session','logout'].includes(path)?3500:15000);
  try{const response=await fetch(`/api/auth/${path}`,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal}:{cache:'no-store',signal:controller.signal});
  const data=await response.json();if(!response.ok)throw new Error(data.error||'Please try again.');return data}finally{if(timer)clearTimeout(timer)}
 }
 export default function AccountApp(){
+ const standalone=supportsStandalone();
+ const localSync=useSyncExternalStore(listenLocalSync,localSyncState,localSyncState);
  const mounted=useRef(true),sessionRequest=useRef(0);
  const sessionVersion=sessionRequest.current;
  const [session,setSession]=useState<Session|null>(null),[error,setError]=useState(''),[email,setEmail]=useState(''),[identifier,setIdentifier]=useState(''),[username,setUsername]=useState(''),[password,setPassword]=useState(''),[passwordConfirmation,setPasswordConfirmation]=useState('');
@@ -28,7 +31,9 @@ export default function AccountApp(){
  const usernameInput=useRef<HTMLInputElement>(null),confirmationInput=useRef<HTMLInputElement>(null);
  const [showPassword,setShowPassword]=useState(false);
  const [pending,setPending]=useState(false),[recovering,setRecovering]=useState(false),[menu,setMenu]=useState(false),[offlineSession,setOfflineSession]=useState(false);
- usePhoneOrientation(session?.account&&!pending?'landscape':'portrait');
+ usePhoneOrientation(session?.account&&(!pending||standalone)?'landscape':'portrait');
+ const localOnly=standalone&&(localSync?!localSync.paired:session?.localOnly??!nativeConnection());
+ const displayAccount=standalone&&localSync?.account?localSync.account:session?.account;
  const offline=useSyncExternalStore(listenOffline,offlineState,offlineState);
  const changeComputer=isNativeApp()?<button className="text-button" onClick={()=>window.dispatchEvent(new Event('worldwide-change-computer'))}>Change computer</button>:null;
  const load=async()=>{
@@ -37,18 +42,19 @@ export default function AccountApp(){
   try{
    if(localStorage.getItem('elsewhere-pending-logout')==='1'){
     try{await auth('logout',{});localStorage.removeItem('elsewhere-pending-logout')}
-    catch(error){if(stale())return;if(error instanceof TypeError||(error as Error).name==='AbortError'){setSession({account:null,needsSetup:false,canSetup:false,canReset:false});return}throw error}
+    catch(error){if(stale())return;if(error instanceof TypeError||(error as Error).name==='AbortError'){if(standalone)throw error;setSession({account:null,needsSetup:false,canSetup:false,canReset:false});return}throw error}
    }
    if(stale())return;
+   if(standalone)void refreshLocalSync();
    const value=await auth('session') as Session;if(stale())return;setSession(value);setOfflineSession(false);
    if(value.account)await rememberOfflineAccount(value.account.email,value.account.username);else await clearOfflineAlbum();
   }catch(error){
    if(stale())return;
-   if(error instanceof TypeError||(error as Error).name==='AbortError'){const saved=await readOfflineAccount();if(stale())return;if(saved){setSession({...saved,canReset:false});setOfflineSession(true);return}}
+   if(error instanceof TypeError||(error as Error).name==='AbortError'){const saved=await readOfflineAccount();if(stale())return;if(saved){setSession({...saved,canReset:false});setOfflineSession(!standalone);return}}
    setError((error as Error).message);
   }
  };
- useEffect(()=>{mounted.current=true;void load();const expired=()=>{sessionRequest.current++;void clearOfflineAlbum();setSession(current=>current?{...current,account:null}:current);setMenu(false);setError('Please sign in again.')};window.addEventListener('album-session-expired',expired);return()=>{mounted.current=false;sessionRequest.current++;window.removeEventListener('album-session-expired',expired)}},[]);
+ useEffect(()=>{mounted.current=true;void load();const expired=()=>{if(standalone){void load();void refreshLocalSync();return}sessionRequest.current++;void clearOfflineAlbum();setSession(current=>current?{...current,account:null}:current);setMenu(false);setError('Please sign in again.')};const connectionChanged=()=>{if(standalone){void load();void refreshLocalSync()}};window.addEventListener('worldwide-local-connection-changed',connectionChanged);window.addEventListener('album-session-expired',expired);return()=>{mounted.current=false;sessionRequest.current++;window.removeEventListener('album-session-expired',expired);window.removeEventListener('worldwide-local-connection-changed',connectionChanged)}},[]);
  useEffect(()=>{if(!offlineSession)return;const retry=()=>{if(!document.hidden)void load()};window.addEventListener('online',retry);window.addEventListener('focus',retry);return()=>{window.removeEventListener('online',retry);window.removeEventListener('focus',retry)}},[offlineSession]);
  async function submit(e:React.FormEvent){
   e.preventDefault();if(pending||recovering&&!session?.canReset)return;
@@ -69,7 +75,7 @@ export default function AccountApp(){
    await rememberOfflineAccount(result.account.email,result.account.username);
   }catch(e){setError((e as Error).message)}finally{setPending(false)}
  }
- async function signOut(){sessionRequest.current++;setPending(true);setError('');try{if(offlineSession)localStorage.setItem('elsewhere-pending-logout','1');else try{await auth('logout',{});localStorage.removeItem('elsewhere-pending-logout')}catch(error){if(!mounted.current)return;if(error instanceof TypeError||(error as Error).name==='AbortError')localStorage.setItem('elsewhere-pending-logout','1');else throw error}if(!mounted.current)return;await clearOfflineAlbum();setOfflineSession(false);setMenu(false);setSession(current=>current?{...current,account:null}:current)}catch(e){setError((e as Error).message)}finally{setPending(false)}}
+ async function signOut(){sessionRequest.current++;setPending(true);setError('');try{if(standalone){await auth('logout',{});if(!mounted.current)return;localStorage.removeItem('elsewhere-pending-logout');resetLocalSync();setOfflineSession(false);setMenu(false);await load();return}if(offlineSession)localStorage.setItem('elsewhere-pending-logout','1');else try{await auth('logout',{});localStorage.removeItem('elsewhere-pending-logout')}catch(error){if(!mounted.current)return;if(error instanceof TypeError||(error as Error).name==='AbortError')localStorage.setItem('elsewhere-pending-logout','1');else throw error}if(!mounted.current)return;await clearOfflineAlbum();setOfflineSession(false);setMenu(false);setSession(current=>current?{...current,account:null}:current)}catch(e){setError((e as Error).message)}finally{setPending(false)}}
  useEffect(()=>{if(session?.account)void registerOffline()},[session?.account?.email]);
 
  if(!session)return <AccountFrame compact><div className="account-loading">{error?<><h1>Let’s get connected</h1><p role="alert">{error}</p><button className="button primary" onClick={()=>{setError('');void load()}}>Try again<ArrowRight size={17}/></button>{changeComputer}</>:<><LoaderCircle size={26} className="spinning" aria-label="Opening your album"/><h1>Opening your world</h1><p>Your private album is on its way.</p></>}</div></AccountFrame>;
@@ -91,18 +97,25 @@ export default function AccountApp(){
    </form>
   </>}{changeComputer}<div className="account-form-footer"><LockKeyhole size={13}/><span>{session.needsSetup?'One account. Just for you.':'Private. Saved on your computer.'}</span></div>
  </AccountFrame>;
- return <><MapLoadBoundary><Suspense fallback={<AccountFrame compact><div className="account-loading"><LoaderCircle size={26} className="spinning" aria-label="Opening your map"/><h1>Opening your world</h1></div></AccountFrame>}><Atlas onAccount={()=>{setMenu(true);setError('')}}/></Suspense></MapLoadBoundary>
+ return <><MapLoadBoundary><Suspense fallback={<AccountFrame compact><div className="account-loading"><LoaderCircle size={26} className="spinning" aria-label="Opening your map"/><h1>Opening your world</h1></div></AccountFrame>}><Atlas onAccount={()=>{setMenu(true);setError('');if(standalone)void refreshLocalSync()}}/></Suspense></MapLoadBoundary>
  {!menu&&<WideMapPrompt/>}
  {menu&&<Modal label="Your account" className="account-modal" onClose={()=>setMenu(false)}>
-  <div className="account-sheet-heading"><div className="account-identity"><div className="account-avatar" aria-hidden="true">{(session.account.username||session.account.email).slice(0,1).toUpperCase()}</div><div><h2>Your album</h2><p className="account-email">{session.account.email}</p></div></div><button className="icon-button" aria-label="Close account" onClick={()=>setMenu(false)}><X size={21}/></button></div>
+  <div className="account-sheet-heading"><div className="account-identity"><div className="account-avatar" aria-hidden="true">{displayAccount?.email?(displayAccount.username||displayAccount.email).slice(0,1).toUpperCase():<Globe2 size={24} strokeWidth={1.7}/>}</div><div><h2>{standalone?'On this phone':'Your album'}</h2><p className="account-email">{displayAccount?.email||'Your private travel album'}</p></div></div><button className="icon-button" aria-label="Close account" onClick={()=>setMenu(false)}><X size={21}/></button></div>
   <div className="account-settings-grid">
-   {isNativeApp()?<section className="phone-connect"><h3><Smartphone size={18}/> Your computer</h3><p className="phone-address">{nativeConnection()}</p><p>Photos and changes sync both ways while connected.</p><button className="button" onClick={()=>window.dispatchEvent(new Event('worldwide-change-computer'))}>Change computer</button></section>:!offlineSession&&(session.canReset?<ConnectPhone/>:<section className="phone-connect"><h3><Smartphone size={18}/> Your local album</h3><p>Photos and changes save to your computer.</p><details className="phone-shortcut"><summary>Keep it on your home screen</summary><p>In your browser’s menu, choose Add to Home Screen. Turn your phone sideways for the full map.</p></details></section>)}
-   <div className="account-device-settings"><UsernameSettings username={session.account.username||''} offline={offlineSession} onSaved={async account=>{if(!mounted.current||sessionVersion!==sessionRequest.current)return;setSession(current=>current?.account?{...current,account}:current);await rememberOfflineAccount(account.email,account.username)}}/><section className="offline-account"><h3><Download size={17}/> {offlineAvailable()?'Saved on this device':'Stored on your computer'}</h3><p role="status">{offlineSession?'Viewing your saved album offline.':!offlineAvailable()?'Keep your computer running and use the same Wi-Fi to open your album here.':offline.busy?offline.phase==='map'?'Saving the map for offline use…':`Saving ${offline.saved} of ${offline.total} photos…`:offline.ready?`${offline.saved} ${offline.saved===1?'photo':'photos'} and the map are ready offline.`:offline.error||'Preparing your offline copy…'}</p>{offline.busy&&<progress aria-label="Saving offline album" max={offline.total||1} value={offline.phase==='photos'?offline.saved:undefined}/>} {offline.error&&offlineAvailable()&&<button className="button" onClick={retryOffline}>Try again</button>}</section><AppUpdates/></div>
+   {standalone?<NativeSyncSection status={localSync} localOnly={localOnly}/>:isNativeApp()?<section className="phone-connect"><h3><Smartphone size={18}/> Your computer</h3><p className="phone-address">{nativeConnection()}</p><p>Photos and changes sync both ways while connected.</p><button className="button" onClick={()=>window.dispatchEvent(new Event('worldwide-change-computer'))}>Change computer</button></section>:!offlineSession&&(session.canReset?<ConnectPhone/>:<section className="phone-connect"><h3><Smartphone size={18}/> Your local album</h3><p>Photos and changes save to your computer.</p><details className="phone-shortcut"><summary>Keep it on your home screen</summary><p>In your browser’s menu, choose Add to Home Screen. Turn your phone sideways for the full map.</p></details></section>)}
+   <div className="account-device-settings">{!localOnly&&<UsernameSettings username={displayAccount?.username||''} offline={offlineSession} onSaved={async account=>{if(!mounted.current||sessionVersion!==sessionRequest.current)return;setSession(current=>current?.account?{...current,account}:current);updateLocalSyncAccount(account);await rememberOfflineAccount(account.email,account.username)}}/>}<section className="offline-account"><h3><Download size={17}/> {standalone?'Saved on this phone':offlineAvailable()?'Saved on this device':'Stored on your computer'}</h3><p role="status">{standalone?'Your photos and changes are available here, even without a computer.':offlineSession?'Viewing your saved album offline.':!offlineAvailable()?'Keep your computer running and use the same Wi-Fi to open your album here.':offline.busy?offline.phase==='map'?'Saving the map for offline use…':`Saving ${offline.saved} of ${offline.total} photos…`:offline.ready?`${offline.saved} ${offline.saved===1?'photo':'photos'} and the map are ready offline.`:offline.error||'Preparing your offline copy…'}</p>{!standalone&&offline.busy&&<progress aria-label="Saving offline album" max={offline.total||1} value={offline.phase==='photos'?offline.saved:undefined}/>} {!standalone&&offline.error&&offlineAvailable()&&<button className="button" onClick={retryOffline}>Try again</button>}</section><AppUpdates/></div>
   </div>
   {error&&<p className="editor-error" role="alert">{error}</p>}
-  <div className="account-sheet-footer"><span><LockKeyhole size={12}/>Your album stays yours.</span><button className="button sign-out" disabled={pending} onClick={signOut}>{pending?<LoaderCircle size={15} className="spinning"/>:<LogOut size={15}/>} {pending?'Signing out…':'Sign out'}</button></div>
+  <div className="account-sheet-footer"><span><LockKeyhole size={12}/>{standalone?'Photos stay on this phone.':'Your album stays yours.'}</span>{!localOnly&&<button className="button sign-out" disabled={pending} onClick={signOut}>{pending?<LoaderCircle size={15} className="spinning"/>:<LogOut size={15}/>} {standalone?pending?'Disconnecting…':'Disconnect':pending?'Signing out…':'Sign out'}</button>}</div>
  </Modal>}
  </>;
+}
+
+function NativeSyncSection({status,localOnly}:{status:LocalSyncStatus|null;localOnly:boolean}){
+ const [pending,setPending]=useState(false),[error,setError]=useState('');
+ const connect=()=>window.dispatchEvent(new Event('worldwide-connect-computer'));
+ async function sync(){setPending(true);setError('');try{await syncLocalNow()}catch(error){setError((error as Error).message)}finally{setPending(false)}}
+ return <section className="phone-connect native-sync-section"><h3><Monitor size={18}/>{localOnly?'Your album, your way':'Computer sync'}</h3>{localOnly?<><p>Your photos live on this phone. Connect a computer whenever you want to sync.</p><button className="button primary" onClick={connect}><Monitor size={16}/>Connect computer</button></>:<><p className="native-sync-status" role="status">{status?.connected?status.pending?'Syncing your changes…':'Connected to your computer.':'Waiting for your computer.'}</p><p>{status?.pending?`${status.pending} ${status.pending===1?'change':'changes'} waiting to sync.`:'Keep using your album. Photos stay saved on this phone.'}</p><div className="native-sync-actions"><button className="button" disabled={pending} onClick={()=>void sync()}>{pending?<LoaderCircle size={16} className="spinning"/>:<RotateCw size={16}/>} {pending?'Starting…':'Sync now'}</button><button className="text-button" onClick={connect}>Change computer</button></div>{(error||status?.error)&&<p className="native-sync-note" role="status">{error||status?.error}</p>}</>}</section>;
 }
 
 function WideMapPrompt(){

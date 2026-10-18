@@ -1,5 +1,5 @@
 'use client';
-import {Suspense,lazy,useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo} from 'react';
+import {Suspense,lazy,useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo,useSyncExternalStore} from 'react';
 import {Globe2,Images,Plus,Search,X,Check,ChevronLeft,ChevronRight,Minus,Maximize,Camera,LoaderCircle,Star,Trash2,CalendarDays,BookOpen,Download,ChevronDown,SlidersHorizontal,Map as MapIcon,UserRound,CheckCheck,WifiOff} from 'lucide-react';
 import countries from './data/countries.json';
 import graticules from './data/graticules.json';
@@ -20,7 +20,8 @@ import type {PhotoFrame} from './photo-layout';
 import {exportMap} from './export-map';
 import {TerrainPattern,terrainUrl} from './terrain';
 import {syncOffline,albumSignature} from './offline';
-import {isNativeApp,saveNativeFile} from './native';
+import {isNativeApp,saveNativeFile,supportsStandalone} from './native';
+import {listenLocalSync,localSyncState,refreshLocalSync} from './local-sync';
 
 type Country=(typeof countries)[number];
 type Photo=FramedPhoto&{countryId:string;caption:string;createdAt:string};
@@ -48,12 +49,12 @@ const searchShortcut=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘ K':'Ctrl K'
 let pendingMutations=0,mutationVersion=0,lastAtlasOffline=false;
 async function api<T=Data>(path:string,options:RequestInit={}):Promise<T>{
  const mutation=!!options.method&&!['GET','HEAD'].includes(options.method);
- if(mutation&&lastAtlasOffline)throw new Error('Reconnect to your computer to make changes.');
+ if(mutation&&lastAtlasOffline&&!supportsStandalone())throw new Error('Reconnect to your computer to make changes.');
  if(mutation){pendingMutations++;mutationVersion++}
  const controller=path==='/api/atlas'?new AbortController():null,timer=controller?setTimeout(()=>controller.abort(),8000):null;
  try{
   const response=await fetch(path,{...options,...(controller?{signal:controller.signal}:{}),cache:'no-store',headers:{...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...options.headers}});
-  if(path==='/api/atlas')lastAtlasOffline=response.headers.get('X-Elsewhere-Offline')==='1';
+  if(path==='/api/atlas')lastAtlasOffline=!supportsStandalone()&&response.headers.get('X-Elsewhere-Offline')==='1';
   const data=await response.json() as T & {error?:string};
   if(response.status===401)window.dispatchEvent(new Event('album-session-expired'));
   if(!response.ok)throw new Error(data.error||'Something went wrong. Please try again.');return data;
@@ -61,6 +62,7 @@ async function api<T=Data>(path:string,options:RequestInit={}):Promise<T>{
 }
 const CountryShape=lazy(()=>import('./country-shape'));
 export default function Atlas({onAccount}:{onAccount:()=>void}){
+ const standalone=supportsStandalone(),localSync=useSyncExternalStore(listenLocalSync,localSyncState,localSyncState);
  const [syncError,setSyncError]=useState(false);const refreshSequence=useRef(0),refreshing=useRef(0),syncFailures=useRef(0);
  const [data,setData]=useState<Data>({visits:[],photos:[]});const [loading,setLoading]=useState(true);const [loadError,setLoadError]=useState('');
  const [continent,setContinent]=useState<Continent>('World');
@@ -99,15 +101,15 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
  const refresh=useCallback(async(silent=false)=>{
   if(silent&&refreshing.current)return;
   refreshing.current++;const request=++refreshSequence.current,version=mutationVersion;
-  try{const d=await api('/api/atlas');if(request!==refreshSequence.current||version!==mutationVersion||pendingMutations)return;setData(current=>albumSignature(current)===albumSignature(d)?current:d);setLoadError('');setSyncError(lastAtlasOffline);syncFailures.current=lastAtlasOffline?Math.min(syncFailures.current+1,4):0;if(!lastAtlasOffline)syncOffline(d)}catch(e){if(request===refreshSequence.current){syncFailures.current=Math.min(syncFailures.current+1,4);setSyncError(true);if(!silent)setLoadError((e as Error).message)}}finally{refreshing.current--;setLoading(false)}
+  try{const d=await api('/api/atlas');if(request!==refreshSequence.current||version!==mutationVersion||pendingMutations)return;setData(current=>albumSignature(current)===albumSignature(d)?current:d);setLoadError('');setSyncError(lastAtlasOffline);syncFailures.current=lastAtlasOffline?Math.min(syncFailures.current+1,4):0;if(!lastAtlasOffline)syncOffline(d)}catch(e){if(request===refreshSequence.current){syncFailures.current=Math.min(syncFailures.current+1,4);setSyncError(!standalone);if(!silent||standalone)setLoadError((e as Error).message)}}finally{refreshing.current--;setLoading(false);if(standalone)void refreshLocalSync()}
  },[]);
  useEffect(()=>{
   let timer:ReturnType<typeof setTimeout>,stopped=false;
-  const available=()=>!stopped&&!document.hidden&&navigator.onLine!==false;
+  const available=()=>!stopped&&!document.hidden&&(standalone||navigator.onLine!==false);
   const schedule=()=>{clearTimeout(timer);if(available())timer=setTimeout(()=>void poll(),Math.min(60000,5000*2**syncFailures.current))};
   const poll=async()=>{if(!available())return;if(!pendingMutations)await refresh(true);schedule()};
   const wake=()=>{clearTimeout(timer);if(available())void poll()};
-  const offline=()=>{clearTimeout(timer);lastAtlasOffline=true;setSyncError(true)};
+  const offline=()=>{if(standalone){void refreshLocalSync();return}clearTimeout(timer);lastAtlasOffline=true;setSyncError(true)};
   // Initial access must still read a saved album when already offline.
   void refresh().finally(schedule);
   window.addEventListener('focus',wake);window.addEventListener('online',wake);window.addEventListener('offline',offline);document.addEventListener('visibilitychange',wake);
@@ -200,7 +202,7 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
  useEffect(()=>{
   const transfer=pendingTransfer.current;if(!transfer||loading)return;
   pendingTransfer.current=null;
-  if(loadError||syncError){notify('Your photos weren’t added. Reconnect to your computer, then add them again.');return}
+  if(loadError||syncError){notify(standalone?'Your photos weren’t added. Reopen your album, then add them again.':'Your photos weren’t added. Reconnect to your computer, then add them again.');return}
   if(busy||uploadLock.current||savingVisits.has(transfer.countryId)){notify('Your photos weren’t added. Please add them again after saving finishes.');return}
   void uploadFiles(transfer.sources,transfer.countryId);
  },[loading,loadError,syncError]);
@@ -257,7 +259,7 @@ export default function Atlas({onAccount}:{onAccount:()=>void}){
   <div className="top-controls"><button className="floating-button albums-button" title="Photo albums" aria-label="Photo albums" disabled={busy} onClick={()=>void transitionMap(()=>{setSelected(null);setView('albums');setFinder(false)},terrainUrl(continent,mapStyle))}><Images size={20}/><span>Albums</span></button><button className="floating-button account-button" aria-label="Your account" title="Your account" onClick={onAccount}><UserRound size={20}/></button></div>
   {loadError&&<div className="map-status error" role="alert"><span>{loadError}</span><button onClick={()=>{setLoading(true);refresh()}}>Retry</button></div>}
   {syncError&&!loadError&&<div className="map-status" role="status"><WifiOff size={17}/><span>Offline. Reconnect to your computer to save changes.</span><button onClick={()=>void refresh()}>Retry</button></div>}
-  <div className="map-meta"><div className="map-meta-actions"><button className="map-style-button" aria-label="Choose map style" title="Map styles" disabled={busy} onClick={()=>void transitionMap(()=>{setStylesOpen(true);setFinder(false)})}><MapIcon size={17}/><span>Map style</span></button><button className="save-map-button" disabled={busy||loading||!!loadError||savingVisits.size>0} onClick={()=>void transitionMap(()=>{setExportScope('World');setExportError('');setExportOpen(true)})}><Download size={16}/>Save map</button></div><span className={`sync-indicator ${syncError?'disconnected':''}`} role="status" title={syncError?'Viewing the album saved on this device. Reconnect to sync changes':'Changes save to your private album'}>{syncError?<WifiOff size={13}/>:busy||savingVisits.size||loading?<LoaderCircle size={13} className="spinning"/>:<CheckCheck size={13}/>} {syncError?'Offline':busy||savingVisits.size?'Saving…':loading?'Syncing…':'Saved'}</span><span className="visited-count" aria-live="polite">{loading?<LoaderCircle size={13} className="spinning"/>:<span className="visited-dot"/>}{visited.length} visited</span><a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a></div>
+  <div className="map-meta"><div className="map-meta-actions"><button className="map-style-button" aria-label="Choose map style" title="Map styles" disabled={busy} onClick={()=>void transitionMap(()=>{setStylesOpen(true);setFinder(false)})}><MapIcon size={17}/><span>Map style</span></button><button className="save-map-button" disabled={busy||loading||!!loadError||savingVisits.size>0} onClick={()=>void transitionMap(()=>{setExportScope('World');setExportError('');setExportOpen(true)})}><Download size={16}/>Save map</button></div><span data-local-album={standalone||undefined} className={`sync-indicator ${syncError?'disconnected':''}`} role="status" title={standalone?localSync?.paired?localSync.connected?'Photos save on this phone and sync with your computer.':'Photos save on this phone. Computer sync will resume when connected.':'Photos and changes save on this phone.':syncError?'Viewing the album saved on this device. Reconnect to sync changes':'Changes save to your private album'}>{syncError?<WifiOff size={13}/>:busy||savingVisits.size||loading||standalone&&localSync?.connected&&!!localSync.pending?<LoaderCircle size={13} className="spinning"/>:<CheckCheck size={13}/>} {standalone?busy||savingVisits.size?'Saving…':loading?'Opening…':localSync?.paired&&localSync.connected?localSync.pending?'Syncing…':'Synced':'Saved on phone':syncError?'Offline':busy||savingVisits.size?'Saving…':loading?'Syncing…':'Saved'}</span><span className="visited-count" aria-live="polite">{loading?<LoaderCircle size={13} className="spinning"/>:<span className="visited-dot"/>}{visited.length} visited</span><a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a></div>
 
   <div className="map-zoom" aria-label="Map controls"><button title="Zoom in" aria-label="Zoom in" disabled={zoom.k>=14} onClick={()=>changeZoom(1.5)}><Plus size={20}/></button><button title="Zoom out" aria-label="Zoom out" disabled={zoom.k<=minZoom} onClick={()=>changeZoom(1/1.5)}><Minus size={20}/></button><span/><button title={selected?'Fit country':continent==='World'?'Show whole world':'Fit continent'} aria-label={selected?'Fit country':continent==='World'?'Show whole world':'Fit continent'} onClick={()=>fitCurrentView()}><Maximize size={18}/></button></div>
   {hover&&!selected&&!finder&&view==='map'&&<div className="map-tooltip" style={{left:Math.min(hover.x+14,typeof window!=='undefined'?window.innerWidth-180:hover.x),top:Math.min(hover.y+16,typeof window!=='undefined'?window.innerHeight-58:hover.y)}}>{flag(byId[hover.id].code)} {byId[hover.id].name}{visitedIds.has(hover.id)&&<Check size={13}/>}</div>}

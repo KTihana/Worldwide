@@ -26,9 +26,11 @@ public class NativeSmokeTests extends Instrumentation {
         if("true".equals(args.getString("widgetOnly"))){WidgetSmokeTests.run(this);report.putString("stream","Transparent atlas widget: taps, photo cycling, responsive layouts, wallpaper previews and privacy passed.\n");finish(-1,report);return;}
         if("true".equals(args.getString("releaseRetention"))){ReleaseRetentionProof.run(this,args);report.putString("stream","Signed Worldwide release retained account settings and offline photo.\n");finish(-1,report);return;}
         if("true".equals(args.getString("updateOnly"))){UpdateSmokeTests.run(this,args);report.putString("stream","Android updater validation and data retention passed.\n");finish(-1,report);return;}
+        if("true".equals(args.getString("standalone"))){StandaloneSmokeTests.run(this,args);report.putString("stream","Standalone native album and optional sync passed: offline create/edit/restart, actual PC QR, two-way merge, durable queue, no duplicate photos, disconnect preservation, account isolation.\n");finish(-1,report);return;}
         // JourneyApps' published POM omits its AndroidX runtime camera helpers.
         getTargetContext().getClassLoader().loadClass("androidx.core.content.ContextCompat");
         getTargetContext().getClassLoader().loadClass("androidx.core.app.ActivityCompat");
+        check(!"app.worldwide".equals(getTargetContext().getPackageName()),"Use a disposable native test package");
         String origin=args.getString("server","http://127.0.0.1:3302");
         SharedPreferences prefs=getTargetContext().getSharedPreferences("worldwide",0);prefs.edit().clear().putString("server",origin).commit();
         activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -58,10 +60,18 @@ public class NativeSmokeTests extends Instrumentation {
         Intent scanned=new Intent().putExtra(Intents.Scan.RESULT,pairingUrl).putExtra(Intents.Scan.RESULT_FORMAT,"QR_CODE");check(pairingUrl.equals(scan.invoke(null,Activity.RESULT_OK,scanned)),"Bundled scanner result reaches pairing");
         try{scan.invoke(null,Activity.RESULT_CANCELED,new Intent().putExtra(Intents.Scan.MISSING_CAMERA_PERMISSION,true));throw new AssertionError("Camera denial must explain the address fallback");}catch(InvocationTargetException expected){}
         Method parse=MainActivity.class.getDeclaredMethod("parsePairing",String.class);parse.setAccessible(true);
-        for(String bad:new String[]{"https://example.com",pairingUrl+"&token="+"0".repeat(64),pairingUrl.replace("worldwide://pair?","worldwide://pair/other?"),"worldwide://pair?server=http%3A%2F%2Fexample.com&token="+"0".repeat(64),pairingUrl+"#fragment"}){try{parse.invoke(null,bad);throw new AssertionError("Invalid QR accepted");}catch(InvocationTargetException expected){}}
-        Method receive=MainActivity.class.getDeclaredMethod("receivePairLink",Intent.class);receive.setAccessible(true);receive.invoke(activity,new Intent(Intent.ACTION_VIEW,Uri.parse(pairingUrl)));Field pendingLink=MainActivity.class.getDeclaredField("pendingPairLink");pendingLink.setAccessible(true);check(pairingUrl.equals(pendingLink.get(activity)),"System camera deep link is retained until the app is ready");pendingLink.set(activity,"");
+        Uri webLink=Uri.parse(pairingUrl);
+        check("http".equals(webLink.getScheme())&&webLink.getFragment().startsWith("worldwide-pair="),"Test uses the browser QR actually displayed by the PC");
+        String token=webLink.getFragment().substring("worldwide-pair=".length());
+        String legacyLink=new Uri.Builder().scheme("worldwide").authority("pair").appendQueryParameter("server",origin).appendQueryParameter("token",token).build().toString();
+        for(String valid:new String[]{pairingUrl,legacyLink}){
+            Object parsed=parse.invoke(null,valid);Field parsedOrigin=parsed.getClass().getDeclaredField("origin"),parsedToken=parsed.getClass().getDeclaredField("token");parsedOrigin.setAccessible(true);parsedToken.setAccessible(true);
+            check(origin.equals(parsedOrigin.get(parsed))&&token.equals(parsedToken.get(parsed)),"Browser and legacy QR resolve to the same account handshake");
+        }
+        for(String bad:new String[]{"https://example.com",pairingUrl+"&token="+"0".repeat(64),origin+"/other#worldwide-pair="+token,origin+"/?token=x#worldwide-pair="+token,origin.replace("http://","http://user:password@")+"/#worldwide-pair="+token,"http://example.com/#worldwide-pair="+token,"worldwide://pair?server=http%3A%2F%2Fexample.com&token="+token,legacyLink+"&token="+token,pairingUrl+"#fragment"}){try{parse.invoke(null,bad);throw new AssertionError("Invalid QR accepted");}catch(InvocationTargetException expected){}}
+        Method receive=MainActivity.class.getDeclaredMethod("receivePairLink",Intent.class);receive.setAccessible(true);receive.invoke(activity,new Intent(Intent.ACTION_VIEW,Uri.parse(legacyLink)));Field pendingLink=MainActivity.class.getDeclaredField("pendingPairLink");pendingLink.setAccessible(true);check(legacyLink.equals(pendingLink.get(activity)),"Legacy system-camera deep link is retained until the app is ready");pendingLink.set(activity,"");
         Method pair=MainActivity.class.getDeclaredMethod("pair",String.class,int.class);pair.setAccessible(true);Method cacheBefore=MainActivity.class.getDeclaredMethod("cached",String.class);cacheBefore.setAccessible(true);
-        String oldCookie=prefs.getString("cookie","");String invalid=Uri.parse(pairingUrl).buildUpon().clearQuery().appendQueryParameter("server",Uri.parse(pairingUrl).getQueryParameter("server")).appendQueryParameter("token","0".repeat(64)).build().toString();
+        String oldCookie=prefs.getString("cookie","");String invalid=webLink.buildUpon().fragment("worldwide-pair="+"0".repeat(64)).build().toString();
         try{pair.invoke(activity,invalid,generation.getInt(activity));throw new AssertionError("Invalid pairing accepted");}catch(InvocationTargetException expected){}
         check(oldCookie.equals(prefs.getString("cookie",""))&&origin.equals(prefs.getString("server",""))&&cacheBefore.invoke(activity,"/api/photos/"+photo)!=null,"Failed pairing preserves the old account and offline photo");
         pair.invoke(activity,pairingUrl,generation.getInt(activity));check(!oldCookie.equals(prefs.getString("cookie","")),"QR grants a fresh private session");check(prefs.getString("account","").contains("native@example.test"),"QR saves account identity for offline launch");

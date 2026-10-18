@@ -1,4 +1,4 @@
-import {clearNativeAlbum,isNativeApp,readNativeValue,storeNativeValue,syncNativeAlbum} from './native';
+import {clearNativeAlbum,isNativeApp,supportsStandalone,nativeConnection,readNativeValue,storeNativeValue,syncNativeAlbum} from './native';
 type Album={visits:{countryId:string;visited:number}[];photos:{id:string;countryId:string}[];mapStyle?:string};
 type State={supported:boolean;busy:boolean;ready:boolean;saved:number;total:number;phase:'map'|'photos';error:string};
 const SHELL='elsewhere-shell-v1',ALBUM='elsewhere-album-v1';
@@ -17,12 +17,14 @@ export function offlineState(){return state}
 export function listenOffline(listener:()=>void){window.addEventListener('elsewhere-offline-progress',listener);return()=>window.removeEventListener('elsewhere-offline-progress',listener)}
 export function offlineAvailable(){return isNativeApp()||window.isSecureContext&&'serviceWorker' in navigator&&'caches' in window}
 export async function registerOffline(){
+ if(supportsStandalone()){update({supported:true,busy:false,ready:true,error:''});return true}
  if(isNativeApp()){if(!registration){const saved=readNativeValue<Partial<State>>('offline-state');update({...saved,supported:true,busy:false});registration=Promise.resolve(true)}return registration}
  if(!offlineAvailable()){update({supported:false});return false}
  if(!registration)registration=navigator.serviceWorker.register('/sw.js').then(async()=>{await navigator.serviceWorker.ready;update({supported:true});return true}).catch(()=>{registration=null;update({supported:false,error:'Offline access needs a trusted HTTPS phone address.'});return false});
  return registration;
 }
 export async function rememberOfflineAccount(email:string,username?:string|null){
+ if(supportsStandalone())return;
  const generation=albumGeneration,revision=++accountRevision;
  if(isNativeApp()){storeNativeValue('account',{account:{email,...(username?{username}:{})},needsSetup:false,canSetup:false});return}
  if(!await registerOffline()||generation!==albumGeneration||revision!==accountRevision)return;
@@ -34,12 +36,14 @@ export async function rememberOfflineAccount(email:string,username?:string|null)
  });
 }
 export async function readOfflineAccount(){
+ if(supportsStandalone()){const saved=readNativeValue<{account:{email:string;username?:string|null}}>('account');return {account:saved?.account||{email:'',username:null},localOnly:!nativeConnection(),connected:false,needsSetup:false as const,canSetup:false as const}}
  if(isNativeApp())return readNativeValue<{account:{email:string;username?:string|null};needsSetup:false;canSetup:false}>('account');
  if(!offlineAvailable())return null;
  const response=await(await caches.open(ALBUM)).match(SESSION);
  return response?await response.json() as {account:{email:string;username?:string|null};needsSetup:false;canSetup:false}:null;
 }
 export async function clearOfflineAlbum(){
+ if(supportsStandalone())return;
  albumGeneration++;
  current=null;lastSignature='';photoIndex=null;update({busy:false,ready:false,saved:0,total:0,error:''});
  if(isNativeApp()){clearNativeAlbum();return}
@@ -101,6 +105,7 @@ async function perform(data:Album){
  }catch(error){if(generation===albumGeneration)update({busy:false,ready:false,error:(error as Error).name==='QuotaExceededError'?'This device is out of space for the offline album.':(error as Error).message})}
 }
 export function syncOffline(data:Album,force=false){
+ if(supportsStandalone()){update({supported:true,busy:false,ready:true,saved:data.photos.length,total:data.photos.length,error:''});return}
  current=data;
  if(!offlineAvailable())return;
  const signature=albumSignature(data);

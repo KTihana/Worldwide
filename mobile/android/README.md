@@ -1,21 +1,14 @@
 # Worldwide for Android
 
-The personal Android installer is `../../releases/Worldwide-Android.apk`. It supports Android 8.0 and newer, opens upright for sign-in, switches the map to landscape, and bundles the complete map. It connects directly to the Windows app on your computer. No cloud account, certificate installation, or external service is involved.
+Install `../../releases/Worldwide-Android.apk` on Android 8.0 or newer. It opens your own local travel album; no account or computer is needed to add photos, mark visits, adjust covers, or write notes.
 
-## Install and connect
+## Optional computer sync
 
-1. Copy `Worldwide-Android.apk` to your Android phone and open it. Android may ask you to allow installation from the app you used to open the file.
-2. Keep Worldwide running on your computer. Open **Your album → Connect Android** to show a QR code.
-3. Connect your phone to the same Wi-Fi, open Worldwide, and tap **Scan computer QR**. Allow camera access when asked and scan the computer screen. You are signed in automatically; no address or password typing. The code expires after three minutes and works once. The phone’s system camera can also open a `worldwide://pair` link in the installed app.
-4. In **Your album**, wait for **Saved on this device** to show the map and every photo are ready. You can then reopen the installed app and view them without Wi-Fi or the computer.
+On your computer, open **Your album → Connect phone**. On Android, open **Your album → Connect computer → Scan computer QR**. Use the same Wi-Fi. The same QR works in the Android app or the phone browser.
 
-**Enter address instead** remains available if the camera cannot be used. It connects to the computer address shown in the desktop account panel, then lets you sign in with the same account password.
+Both apps keep their own albums. Connecting combines your photos and visits, then syncs changes both ways. Offline phone edits wait safely for the next connection. If the same field was changed on both devices while apart, the waiting phone edit is applied when syncing; edits to different fields are retained. Disconnecting keeps the phone album. An album already linked to another account is kept separate to prevent sharing it accidentally.
 
-Forgot your password? On the computer, choose **Forgot password?** and set a new password. Your photos stay in place. Then show a new QR code to reconnect your phone. A failed or expired QR never clears the phone’s existing account or saved photos.
-
-Changes and uploads need a connection to the computer. The offline album is read only. The app automatically checks for changes while open. It does not promise background sync after Android closes it. **Change computer** is available on the connection, sign-in, and account screens. Connecting a different computer clears the phone's previous album copy. Signing out removes cached private photos and the local session. Uninstalling or clearing Android app data also removes the phone copy; the computer's album is preserved.
-
-The normal Android file picker handles photo uploads. Saving a map or photo opens Android's save dialog. No broad photo-library or storage permission is required.
+Install updates over the existing app to keep photos. **Your album → App updates** checks for Android updates without needing a computer. The map stays horizontal; connecting and sign-in use an upright screen.
 
 ## Home-screen map widget
 
@@ -25,7 +18,7 @@ Tap a country to reveal a photo and its fitted silhouette. Widely scattered terr
 
 The wallpaper remains visible through the map and around the photo. Typography uses Android’s system sans, a 22–26sp title and 12sp supporting text. Controls have 48dp targets. The country reveal uses a single 180ms fade, with a static fallback when system animation is disabled; there is no idle animation or timer. Android 12+ gets exact launcher sizes and wallpaper-aware text, with portrait/landscape layouts on older versions. This is an Android implementation of the hierarchy and restraint in Apple’s [Widgets](https://developer.apple.com/design/human-interface-guidelines/widgets), [Materials](https://developer.apple.com/design/human-interface-guidelines/materials), and [fluid interface guidance](https://developer.apple.com/videos/play/wwdc2018/803/), informed by the public [Frontend Design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md). It does not emulate live wallpaper blur or continuous map gestures.
 
-Open Worldwide and let **Saved on this device** finish once. The native widget then works offline and refreshes after the app saves changes. The chosen cover and saved photo crop are respected. If a cover has not downloaded, another cached photo is used. Signing out or changing computers clears private photos and selections from the widget.
+The native widget works offline and refreshes after the app saves changes. The chosen cover and saved photo crop are respected. If a cover has not downloaded, another cached photo is used. Disconnecting computer sync keeps your local photos and widget.
 
 Verify with `node tests/android-widget.mjs` after `npm run build` and `npm run android:sync`. Tests use only `app.worldwide.widgettest` on an emulator and synthetic coastal illustrations, never personal photos. They cover real taps, cover ordering, photo cycling, privacy, independent widgets, motion/static layouts, resizing and large text. Nine density-correct previews and their fixture manifest are written to `/tmp/worldwide-widget-*.png` and `/tmp/worldwide-widget-previews.json`.
 
@@ -55,13 +48,13 @@ npm run android:sync
 node tests/android-native.mjs
 ```
 
-The test creates a separate temporary server and album, installs the debug app and instrumentation package, and checks real account login, cookie persistence, PATCH visits and photo crops, multipart photo uploads, local photo persistence, disconnected album access, sign-out cleanup, server address restrictions, actual PC QR decoding, camera result/cancellation handling, deep-link validation, single-use pairing, preservation of the previous account on failure, and paired offline identity. It does not use `data/` or the real account. The emulator's Worldwide test app is reset by the test. Use a dedicated emulator, never a personal device with a real Worldwide album.
+The test uses temporary PC albums and the separate `app.worldwide.nativetest` package on an emulator. It checks standalone editing, legacy photo migration, restart persistence, the actual PC QR, offline changes, two-way sync, duplicate prevention, disconnect retention, and separation of accounts with identical emails. It never touches `data/` or the installed Worldwide album.
 
 ## Implementation
 
-The Android wrapper serves bundled files at an internal HTTPS origin and blocks external page navigation. Only that trusted app can access the native bridge. API calls go directly to the configured computer; the bridge supplies the computer's origin, stores its session cookie privately, and never exposes the cookie to JavaScript. HTTP connections are limited to local IPv4 addresses; separately configured remote servers must use HTTPS. Redirects and invalid certificates are rejected.
+The Android wrapper serves bundled files at an internal HTTPS origin and blocks external page navigation. Only that trusted app can access the native bridge. Album edits go to the phone’s private SQLite database and durable sync queue first. Optional background sync contacts the configured computer; the bridge supplies its origin, stores its session cookie privately, and never exposes the cookie to JavaScript. HTTP connections are limited to local IPv4 addresses; separately configured remote servers must use HTTPS. Redirects and invalid certificates are rejected.
 
-Photos and the album snapshot are stored in Android's private application directory. Cloud backup is disabled. Generation guards cancel stale writes when signing out or changing computers. The app uses the platform WebView and standard Android APIs. The QR camera uses bundled JourneyApps ZXing Embedded 4.3.0 with ZXing Core 3.5.3 (Apache 2.0). Camera frames are decoded on the phone and are never uploaded or saved. Camera permission is requested only when you open the scanner. Pairing sends only the one-use token to the scanned computer; previous credentials are never sent there. The new session and computer address are committed only after a valid successful response.
+Photos, metadata, and pending edits are stored in Android’s private application directory. Cloud backup is disabled. Generation guards cancel stale writes when signing out or changing computers. The app uses the platform WebView and standard Android APIs. The QR camera uses bundled JourneyApps ZXing Embedded 4.3.0 with ZXing Core 3.5.3 (Apache 2.0). Camera frames are decoded on the phone and are never uploaded or saved. Camera permission is requested only when you open the scanner. Pairing sends only the one-use token to the scanned computer; previous credentials are never sent there. The new session and computer address are committed only after a valid successful response.
 
 References: [ZXing Android Embedded](https://github.com/journeyapps/zxing-android-embedded), [Android local web content](https://developer.android.com/develop/ui/views/layout/webapps/load-local-content), [Android Gradle compatibility](https://developer.android.com/build/releases/about-agp).
 

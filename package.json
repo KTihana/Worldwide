@@ -1,6 +1,6 @@
 {
   "name": "worldwide-local",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "engines": {
     "node": ">=22.18.0"
@@ -10,7 +10,7 @@
     "build": "node scripts/generate-brand.mjs && node scripts/prepare-map-regions.mjs && node scripts/prepare-map-backgrounds.mjs && node scripts/generate-graticules.mjs && node scripts/generate-country-thumbnails.mjs && vite build && node scripts/generate-offline-assets.mjs && node scripts/compress-assets.mjs",
     "start": "node server/index.ts",
     "check": "tsc --noEmit",
-    "test": "node tests/map-transitions.mjs && node tests/detailed-outlines.mjs && node tests/map-focus.mjs && node tests/map-styles.mjs && node tests/terrain.mjs && node tests/photo-layout.mjs && node tests/offline-worker.mjs && node tests/remote-image.mjs && node tests/native-bridge.mjs && node tests/orientation.mjs && node tests/account-identity.mjs && node tests/local-server.mjs && node tests/web-pairing.mjs && node tests/static-files.mjs && node tests/website-version.mjs && node tests/offline-sync.mjs",
+    "test": "node tests/map-transitions.mjs && node tests/detailed-outlines.mjs && node tests/map-focus.mjs && node tests/map-styles.mjs && node tests/terrain.mjs && node tests/photo-layout.mjs && node tests/offline-worker.mjs && node tests/remote-image.mjs && node tests/native-bridge.mjs && node tests/orientation.mjs && node tests/account-identity.mjs && node tests/photo-idempotency.mjs && node tests/local-server.mjs && node tests/web-pairing.mjs && node tests/static-files.mjs && node tests/website-version.mjs && node tests/offline-sync.mjs",
     "desktop:prepare": "node scripts/prepare-desktop.mjs",
     "desktop:dev": "npm run build && npm run desktop:prepare && electron .",
     "desktop:build": "npm run build && npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs",
@@ -23,7 +23,8 @@
     "test:browser": "electron tests/web-pairing-ui.cjs && electron tests/interactions.cjs",
     "test:design": "electron tests/design-review.cjs",
     "test:account": "electron tests/account-ui.cjs",
-    "test:orientation": "node tests/orientation.mjs && node tests/android-orientation.mjs"
+    "test:orientation": "node tests/orientation.mjs && node tests/android-orientation.mjs",
+    "test:android": "node tests/android-native.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.31.0",
