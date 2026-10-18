@@ -25,7 +25,7 @@ try{
  assert.equal((await(await fetch(base+'/api/health')).json()).app,'worldwide-local');
  assert.equal((await fetch(base+'/api/atlas')).status,401,'Private album requires login');
  const legacy=new DatabaseSync(resolve(temp,'atlas.sqlite'));legacy.prepare('INSERT INTO visits(user_id,country_id,visited,note,updated_at) VALUES(?,?,?,?,?)').run('local','HRV',1,'Existing album',new Date().toISOString());legacy.close();
- const credentials={email:'owner@example.test',password:'a long private test password'};
+ const credentials={email:'owner@example.test',username:'album_owner',password:'a long private test password',passwordConfirmation:'a long private test password'};
  const setup=await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)});assert.equal(setup.status,200);assert.ok(setup.cookie);assert.equal(Object.hasOwn(setup.data,'recoveryCode'),false,'New accounts need no recovery code');sessionCookie=setup.cookie;
  const connection=await request('/api/connection');assert.equal(connection.status,200);assert.ok(Array.isArray(connection.data.localUrls));assert.ok(connection.data.localUrls.every(url=>url.startsWith('http://')),'Native Android pairing provides LAN HTTP addresses');
  assert.equal((await request('/api/atlas')).data.visits.find(v=>v.countryId==='HRV').note,'Existing album','Account setup preserves legacy visits');
@@ -35,8 +35,10 @@ try{
  const importError=await fetch(base+'/api/photos/import',{method:'POST',headers:{origin:base,cookie:sessionCookie,'Content-Type':'application/json'},body:'{"url":"file:///etc/passwd"}'});assert.equal(importError.headers.get('cache-control'),'no-store','Image import errors are not cached');
 
  assert.equal((await request('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(credentials)})).status,409,'Only the private owner can be created');
- const login=await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json',cookie:''},body:JSON.stringify(credentials)});assert.equal(login.status,200);const phoneCookie=login.cookie;assert.notEqual(phoneCookie,sessionCookie,'Each device gets its own session');
- assert.equal((await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,password:'incorrect password'})})).status,401);
+ const login=await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json',cookie:''},body:JSON.stringify({identifier:credentials.username,password:credentials.password})});assert.equal(login.status,200,'Username signs in');const phoneCookie=login.cookie;assert.notEqual(phoneCookie,sessionCookie,'Each device gets its own session');
+ assert.equal((await post('/api/auth/login',{identifier:credentials.email,password:credentials.password},{cookie:''})).status,200,'Email signs in through the identifier field');
+ assert.equal((await post('/api/auth/login',{email:credentials.email,password:credentials.password},{cookie:''})).status,200,'Email signs in through the legacy field');
+ assert.equal((await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:credentials.username,password:'incorrect password'})})).status,401);
 
  const terrain=await fetch(base+'/terrain/world-natural-earth.webp');assert.equal(terrain.status,200,'Terrain is served locally');assert.equal(terrain.headers.get('content-type'),'image/webp');assert.ok((await terrain.arrayBuffer()).byteLength>10000,'Local terrain has image data');
  assert.equal((await fetch(base+'/signin-with-external-provider')).status,404,'External sign-in routes are unavailable');
@@ -122,7 +124,7 @@ try{
  assert.equal((await post('/api/auth/pair-complete',{token:pendingToken},{cookie:''})).status,401,'Reset invalidates unclaimed QR codes');
  sessionCookie=reset.cookie;
  const resetAlbum=(await request('/api/atlas')).data;assert.equal(resetAlbum.photos.length,1,'Reset preserves photos');assert.equal(resetAlbum.visits.find(v=>v.countryId==='HRV').note,'Existing album','Reset preserves the existing album');assert.deepEqual(Buffer.from((await request(`/api/photos/${ids[0]}`)).data),bytes,'Reset preserves uploaded photo bytes');
- assert.equal((await post('/api/auth/login',credentials,{cookie:''})).status,401,'Previous password stops working');
+ assert.equal((await post('/api/auth/login',{identifier:credentials.username,password:credentials.password},{cookie:''})).status,401,'Previous password stops working');
  assert.equal((await post('/api/auth/login',{email:credentials.email,password:replacementPassword},{cookie:''})).status,200,'New password works');
  console.log('PASS: private account, preserved album, shared edits/photos, QR pairing and single-use tokens, trusted-PC reset and session revocation, landscape manifest, and origin protection.');
 }finally{await stop();await rm(temp,{recursive:true,force:true})}

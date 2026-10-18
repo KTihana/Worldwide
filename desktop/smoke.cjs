@@ -8,7 +8,7 @@ app.whenReady().then(async()=>{try{
  let output='';child.stderr.on('data',x=>output+=x);child.stdout.on('data',x=>output+=x);
  let ready=false;for(let i=0;i<80;i++){await new Promise(r=>setTimeout(r,150));try{ready=(await fetch(origin+'/api/health')).ok;if(ready)break}catch{}}
  if(!ready)throw new Error('Utility server did not start: '+output);
- const setup=await fetch(origin+'/api/auth/setup',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({email:'desktop@example.test',password:'desktop smoke private password'})});
+ const setup=await fetch(origin+'/api/auth/setup',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({email:'desktop@example.test',username:'desktop_test',password:'desktop smoke private password',passwordConfirmation:'desktop smoke private password'})});
  if(setup.status!==200)throw new Error('Account setup failed '+await setup.text());
  const cookie=setup.headers.get('set-cookie').split(';')[0];
  const response=await fetch(origin+'/api/atlas',{headers:{Cookie:cookie}});if(response.status!==200)throw new Error('Album unavailable');

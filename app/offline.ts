@@ -6,6 +6,8 @@ const SESSION='/__offline_account__',READY='/__offline_ready__';
 let state:State={supported:false,busy:false,ready:false,saved:0,total:0,phase:'map',error:''};
 let current:Album|null=null,running:Promise<void>|null=null,lastSignature='',registration:Promise<boolean>|null=null,albumGeneration=0;
 let shellPreparation:Promise<void>|null=null,photoIndex:Promise<Set<string>>|null=null,persistenceRequested=false;
+let accountCacheWork:Promise<void>=Promise.resolve(),accountRevision=0;
+function accountCacheTask(task:()=>Promise<void>){const operation=accountCacheWork.then(task);accountCacheWork=operation.catch(()=>{});return operation}
 const signatures=new WeakMap<object,string>();
 /** Album objects are immutable; polling and offline sync can share one encoding. */
 export function albumSignature(data:Album){let value=signatures.get(data);if(value===undefined){value=JSON.stringify(data);signatures.set(data,value)}return value}
@@ -20,23 +22,30 @@ export async function registerOffline(){
  if(!registration)registration=navigator.serviceWorker.register('/sw.js').then(async()=>{await navigator.serviceWorker.ready;update({supported:true});return true}).catch(()=>{registration=null;update({supported:false,error:'Offline access needs a trusted HTTPS phone address.'});return false});
  return registration;
 }
-export async function rememberOfflineAccount(email:string){
- if(isNativeApp()){storeNativeValue('account',{account:{email},needsSetup:false,canSetup:false});return}
- if(!await registerOffline())return;
- const cache=await caches.open(ALBUM);
- await cache.put(SESSION,new Response(JSON.stringify({account:{email},needsSetup:false,canSetup:false}),{headers:{'Content-Type':'application/json'}}));
+export async function rememberOfflineAccount(email:string,username?:string|null){
+ const generation=albumGeneration,revision=++accountRevision;
+ if(isNativeApp()){storeNativeValue('account',{account:{email,...(username?{username}:{})},needsSetup:false,canSetup:false});return}
+ if(!await registerOffline()||generation!==albumGeneration||revision!==accountRevision)return;
+ await accountCacheTask(async()=>{
+  if(generation!==albumGeneration||revision!==accountRevision)return;
+  const cache=await caches.open(ALBUM);
+  if(generation!==albumGeneration||revision!==accountRevision)return;
+  await cache.put(SESSION,new Response(JSON.stringify({account:{email,...(username?{username}:{})},needsSetup:false,canSetup:false}),{headers:{'Content-Type':'application/json'}}));
+ });
 }
 export async function readOfflineAccount(){
- if(isNativeApp())return readNativeValue<{account:{email:string};needsSetup:false;canSetup:false}>('account');
+ if(isNativeApp())return readNativeValue<{account:{email:string;username?:string|null};needsSetup:false;canSetup:false}>('account');
  if(!offlineAvailable())return null;
  const response=await(await caches.open(ALBUM)).match(SESSION);
- return response?await response.json() as {account:{email:string};needsSetup:false;canSetup:false}:null;
+ return response?await response.json() as {account:{email:string;username?:string|null};needsSetup:false;canSetup:false}:null;
 }
 export async function clearOfflineAlbum(){
  albumGeneration++;
  current=null;lastSignature='';photoIndex=null;update({busy:false,ready:false,saved:0,total:0,error:''});
  if(isNativeApp()){clearNativeAlbum();return}
- if('caches' in window)await caches.delete(ALBUM);
+ // Finish any in-flight identity write before logout deletes it. New identity
+ // writes queue after this deletion, without waiting for service-worker setup.
+ if('caches' in window)await accountCacheTask(async()=>{await caches.delete(ALBUM)});
 }
 async function download(cache:Cache,url:string,refresh=false){
  if(!refresh&&await cache.match(url))return;

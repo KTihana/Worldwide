@@ -15,7 +15,7 @@ app.whenReady().then(async()=>{try{
  const reserve=createServer();await new Promise(resolve=>reserve.listen(0,'127.0.0.1',resolve));const port=reserve.address().port;await new Promise(resolve=>reserve.close(resolve));const pc=`http://127.0.0.1:${port}`;
  server=spawn(process.env.WORLDWIDE_NODE||'node',['server/index.ts'],{cwd:root,env:{...process.env,PORT:String(port),ELSEWHERE_DATA_DIR:temp,ELSEWHERE_TLS_CERT:'',ELSEWHERE_TLS_KEY:'',ELSEWHERE_PUBLIC_ORIGIN:''},stdio:'ignore'});
  await until(async()=>{try{return(await fetch(pc+'/api/health')).ok}catch{return false}},'temporary local server');
- const setup=await fetch(pc+'/api/auth/setup',{method:'POST',headers:{origin:pc,'Content-Type':'application/json'},body:JSON.stringify({email:'browser-ui@example.test',password:'Private browser fixture password'})});assert.equal(setup.status,200);const pcCookie=setup.headers.get('set-cookie').split(';')[0];
+ const setup=await fetch(pc+'/api/auth/setup',{method:'POST',headers:{origin:pc,'Content-Type':'application/json'},body:JSON.stringify({email:'browser-ui@example.test',username:'browser_ui',password:'Private browser fixture password',passwordConfirmation:'Private browser fixture password'})});assert.equal(setup.status,200);const pcCookie=setup.headers.get('set-cookie').split(';')[0];
  const connection=await(await fetch(pc+'/api/connection',{headers:{cookie:pcCookie}})).json(),phone=connection.localUrls[0]||pc;
  assert.ok(phone.startsWith('http://'),'Phone opens ordinary HTTP, with no certificate steps');
  const visited=await fetch(pc+'/api/countries/HRV',{method:'PATCH',headers:{origin:pc,cookie:pcCookie,'Content-Type':'application/json'},body:JSON.stringify({visited:true,note:'Browser pairing fixture'})});assert.equal(visited.status,200);

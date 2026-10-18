@@ -19,7 +19,7 @@ const temp=await mkdtemp(join(tmpdir(),'worldwide-native-test-'));const port=330
 try{
  child=spawn(process.execPath,['server/index.ts'],{cwd:root,env:{...process.env,PORT:String(port),ELSEWHERE_DATA_DIR:temp},stdio:['ignore','pipe','pipe']});
  await new Promise((resolve,reject)=>{let output='';const timer=setTimeout(()=>reject(new Error(output||'Server startup timed out')),10000);child.stdout.on('data',chunk=>{output+=chunk;if(output.includes('Worldwide is running at')){clearTimeout(timer);resolve()}});child.stderr.on('data',chunk=>output+=chunk);child.once('exit',()=>{clearTimeout(timer);reject(new Error(output))})});
- const setup=await fetch(base+'/api/auth/setup',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({email:'native@example.test',password:'Worldwide native test 2026'})});assert.equal(setup.status,200);
+ const setup=await fetch(base+'/api/auth/setup',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({email:'native@example.test',username:'native_test',password:'Worldwide native test 2026',passwordConfirmation:'Worldwide native test 2026'})});assert.equal(setup.status,200);
  const pcCookie=setup.headers.get('set-cookie').split(';')[0];
  const pcEdit=await fetch(base+'/api/countries/ITA',{method:'PATCH',headers:{Origin:base,Cookie:pcCookie,'Content-Type':'application/json'},body:JSON.stringify({visited:true,note:'Created on PC before phone sync'})});assert.equal(pcEdit.status,200);
  // The dedicated emulator may contain a personally signed release from visual QA.

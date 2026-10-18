@@ -17,7 +17,7 @@ async function call(action,body,{origin=pc,cookie=pcCookie,local=true,site='same
  catch(error){return Response.json({error:error.message},{status:error.status||500});}
 }
 try{
- const setup=await call('setup',{email:'browser@example.test',password:'A private browser test password'});assert.equal(setup.status,200);pcCookie=setup.headers.get('set-cookie').split(';')[0];
+ const setup=await call('setup',{email:'browser@example.test',username:'browser_test',password:'A private browser test password',passwordConfirmation:'A private browser test password'});assert.equal(setup.status,200);pcCookie=setup.headers.get('set-cookie').split(';')[0];
  assert.equal((await call('pair-start',{serverUrl:lan,client:'web'},{cookie:''})).status,401);
  assert.equal((await call('pair-start',{serverUrl:lan,client:'web'},{local:false,origin:lan})).status,403);
  assert.equal((await call('pair-start',{serverUrl:'http://untrusted.example',client:'web'})).status,400);

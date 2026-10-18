@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 const lifetime=30*24*60*60;
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 const cookieName='elsewhere_session';
-type Account={id:string;email:string;password_hash:string;recovery_hash:string};
+type Account={id:string;email:string;username:string|null;password_hash:string;recovery_hash:string};
 const pairingLifetime=3*60*1000;
 const pairings=new Map<string,{accountId:string;expiresAt:number;used:boolean}>();
 function forgetPairings(accountId:string){for(const [key,value] of pairings)if(value.accountId===accountId||value.expiresAt<=Date.now())pairings.delete(key)}
@@ -19,7 +19,7 @@ export function sameOrigin(request:Request){
 }
 export function currentAccount(request:Request){
  const token=cookie(request);if(!/^[a-f0-9]{64}$/.test(token))return null;
- return db.prepare('SELECT a.id,a.email FROM sessions s JOIN accounts a ON a.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(digest(token),Date.now()).first<{id:string;email:string}>();
+ return db.prepare('SELECT a.id,a.email,a.username FROM sessions s JOIN accounts a ON a.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(digest(token),Date.now()).first<{id:string;email:string;username:string|null}>();
 }
 export function requireAccount(request:Request){sameOrigin(request);const account=currentAccount(request);if(!account)throw new ApiError('Please sign in to your album.',401);return account.id}
 function rateLimit(key:string,limit:number){
@@ -38,12 +38,18 @@ async function hashPassword(password:string){const salt=randomBytes(16).toString
 async function verifyPassword(password:string,encoded:string){const [salt,expected]=encoded.split(':');const actual=await derive(password,salt);const target=Buffer.from(expected,'hex');return target.length===actual.length&&timingSafeEqual(actual,target)}
 function password(value:unknown){if(typeof value!=='string'||value.length<12||value.length>256)throw new ApiError('Use a password between 12 and 256 characters.');return value}
 function email(value:unknown){if(typeof value!=='string'||value.length>254||!/^\S+@\S+\.\S+$/.test(value))throw new ApiError('Enter a valid email address.');return value.trim().toLowerCase()}
+function username(value:unknown){
+ if(typeof value!=='string')throw new ApiError('Use a username with 3–24 letters, numbers, or underscores.');
+ const name=value.trim().toLowerCase();
+ if(!/^[a-z0-9_]{3,24}$/.test(name))throw new ApiError('Use a username with 3–24 letters, numbers, or underscores.');
+ return name;
+}
 function signIn(request:Request,id:string,extra:Record<string,unknown>={}){
  const token=randomBytes(32).toString('hex');
  db.prepare('DELETE FROM sessions WHERE expires_at<?').bind(Date.now()).run();
  db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(digest(token),id,Date.now()+lifetime*1000).run();
- const account=db.prepare('SELECT email FROM accounts WHERE id=?').bind(id).first<{email:string}>()!;
- return Response.json({account:{email:account.email},...extra},{headers:{'Set-Cookie':sessionCookie(request,token),'Cache-Control':'no-store'}});
+ const account=db.prepare('SELECT email,username FROM accounts WHERE id=?').bind(id).first<{email:string;username:string|null}>()!;
+ return Response.json({account,...extra},{headers:{'Set-Cookie':sessionCookie(request,token),'Cache-Control':'no-store'}});
 }
 export async function authRoute(request:Request,action:string,localConnection:boolean,clientAddress:string,pairingOrigins:string[]=[]){
  sameOrigin(request);
@@ -62,11 +68,18 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   db.prepare('DELETE FROM sessions WHERE token_hash=?').bind(digest(cookie(request))).run();
   return Response.json({ok:true},{headers:{'Set-Cookie':sessionCookie(request,'',0),'Cache-Control':'no-store'}});
  }
- if(!['setup','login','recover','reset-local','pair-start','pair-complete'].includes(action))throw new ApiError('Not found.',404);
+ if(!['setup','login','recover','reset-local','pair-start','pair-complete','username'].includes(action))throw new ApiError('Not found.',404);
  rateLimit('ip:'+clientAddress,30);
  if(!request.headers.get('content-type')?.startsWith('application/json'))throw new ApiError('Invalid request.');
  const body=await request.json() as Record<string,unknown>;
  if(!body||typeof body!=='object'||Array.isArray(body))throw new ApiError('Invalid request.');
+ if(action==='username'){
+  const accountId=requireAccount(request),name=username(body.username);
+  if(db.prepare('SELECT id FROM accounts WHERE username=? COLLATE NOCASE AND id<>?').bind(name,accountId).first())throw new ApiError('This username is already taken.',409);
+  db.prepare('UPDATE accounts SET username=? WHERE id=?').bind(name,accountId).run();
+  const account=db.prepare('SELECT email,username FROM accounts WHERE id=?').bind(accountId).first<{email:string;username:string|null}>()!;
+  return Response.json({account},{headers:{'Cache-Control':'no-store'}});
+ }
  if(action==='pair-start'){
   const accountId=requireAccount(request);
   if(!localConnection)throw new ApiError('Show the QR code on your computer.',403);
@@ -101,19 +114,35 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   forgetPairings(account.id);
   return signIn(request,account.id);
  }
- const address=email(body.email),secret=password(body.password);
- rateLimit('email:'+digest(address),10);
+ if(action==='login'){
+  const supplied=body.identifier===undefined?body.email:body.identifier;
+  const identifier=typeof supplied==='string'&&supplied.length<=254?supplied.trim().toLowerCase():'';
+  const validIdentifier=/^[a-z0-9_]{3,24}$/.test(identifier)||/^\S+@\S+\.\S+$/.test(identifier);
+  const validSecret=typeof body.password==='string'&&body.password.length>=12&&body.password.length<=256;
+  const account=validIdentifier?db.prepare('SELECT * FROM accounts WHERE email=? COLLATE NOCASE OR username=? COLLATE NOCASE').bind(identifier,identifier).first<Account>():null;
+  // Both account identifiers share the existing per-account attempt budget.
+  rateLimit('email:'+digest(account?.email.toLowerCase()||identifier),10);
+  const valid=await verifyPassword(validSecret?body.password as string:'',account?.password_hash||'00000000000000000000000000000000:'+ '0'.repeat(128));
+  if(!account||!validSecret||!valid)throw new ApiError('The email, username, or password is incorrect.',401);
+  return signIn(request,account.id);
+ }
  if(action==='setup'){
   if(!localConnection)throw new ApiError('Create your account on the computer running Worldwide.',403);
   if(exists)throw new ApiError('An account already exists. Please sign in.',409);
+ }
+ const address=email(body.email),secret=password(body.password);
+ rateLimit('email:'+digest(address),10);
+ if(action==='setup'){
+  const name=username(body.username);
+  if(body.passwordConfirmation!==secret)throw new ApiError('The passwords do not match.');
   const encoded=await hashPassword(secret),recoveryCode=randomBytes(24).toString('hex');
   // The existing album already belongs to "local". Attaching this account
   // preserves every photo key, cover, note, and visited country in place.
   if(db.prepare('SELECT id FROM accounts LIMIT 1').first())throw new ApiError('An account already exists. Please sign in.',409);
-  db.prepare('INSERT INTO accounts(id,email,password_hash,recovery_hash,created_at) VALUES(?,?,?,?,?)').bind('local',address,encoded,digest(recoveryCode),new Date().toISOString()).run();
+  db.prepare('INSERT INTO accounts(id,email,username,password_hash,recovery_hash,created_at) VALUES(?,?,?,?,?,?)').bind('local',address,name,encoded,digest(recoveryCode),new Date().toISOString()).run();
   return signIn(request,'local');
  }
- const account=db.prepare('SELECT * FROM accounts WHERE email=?').bind(address).first<Account>();
+ const account=db.prepare('SELECT * FROM accounts WHERE email=? COLLATE NOCASE').bind(address).first<Account>();
  if(action==='recover'){
   if(typeof body.recoveryCode!=='string'||!account||!timingSafeEqual(Buffer.from(digest(body.recoveryCode.trim())),Buffer.from(account.recovery_hash)))throw new ApiError('The email or recovery code is incorrect.',401);
   const encoded=await hashPassword(secret),recoveryCode=randomBytes(24).toString('hex');
@@ -122,7 +151,5 @@ export async function authRoute(request:Request,action:string,localConnection:bo
   forgetPairings(account.id);
   return signIn(request,account.id,{recoveryCode});
  }
- const valid=await verifyPassword(secret,account?.password_hash||'00000000000000000000000000000000:'+ '0'.repeat(128));
- if(!account||!valid)throw new ApiError('The email or password is incorrect.',401);
- return signIn(request,account.id);
+ throw new ApiError('Not found.',404);
 }

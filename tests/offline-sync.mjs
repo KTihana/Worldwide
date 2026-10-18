@@ -37,4 +37,47 @@ offline.retryOffline();await settled(1);assert.equal(counts.manifest,2,'Explicit
 delayedPhoto='/api/photos/old-private';offline.syncOffline({...album,photos:[{id:'old-private',countryId:'HRV'}]});for(let i=0;i<100&&!releasePhoto;i++)await pause();assert.ok(releasePhoto);
 await offline.clearOfflineAlbum();await offline.rememberOfflineAccount('next@example.test');offline.syncOffline({visits:[],photos:[]});releasePhoto();await settled(0);
 const next=await caches.open('elsewhere-album-v1');assert.equal(await next.match('/api/photos/old-private'),undefined);assert.equal((await(await next.match('/__offline_account__')).json()).account.email,'next@example.test');
-console.log('PASS: 20 metadata edits add 0 manifest requests, 0 asset/photo downloads, and 0 cache scans; new/deleted photos, retry, and in-flight logout are correct.');
+
+function deferred(){let resolve;const promise=new Promise(done=>resolve=done);return {promise,resolve}}
+function identityHarness(stage){
+ const values=new Map(),entered=deferred(),released=deferred();let delayed=false;
+ const delay=async current=>{if(stage===current&&!delayed){delayed=true;entered.resolve();await released.promise}};
+ const cacheStorage={async open(name){
+  await delay('open');
+  if(!values.has(name))values.set(name,new Map());
+  const entries=values.get(name);
+  return {async put(input,response){await delay('put');entries.set(key(input),response.clone())},async match(input){return entries.get(key(input))?.clone()}};
+ },async delete(name){return values.delete(name)}};
+ const browserWindow=new EventTarget();browserWindow.isSecureContext=true;browserWindow.caches=cacheStorage;
+ const sandbox={...context,window:browserWindow,caches:cacheStorage,navigator:{serviceWorker:{register:()=>delay('registration'),ready:Promise.resolve()}}};
+ runInNewContext(code.outputFiles[0].text,sandbox);
+ return {offline:sandbox.offline,entered:entered.promise,release:released.resolve,async account(){const response=values.get('elsewhere-album-v1')?.get(key('/__offline_account__'));return response?(await response.clone().json()).account:null}};
+}
+// A stale registration/open continuation must not revive a signed-out identity.
+for(const stage of ['registration','open']){
+ const h=identityHarness(stage),old=h.offline.rememberOfflineAccount('old@example.test','old_username');
+ await h.entered;
+ const cleared=h.offline.clearOfflineAlbum();
+ if(stage==='registration')await cleared; // Logout never waits for worker registration.
+ h.release();await Promise.all([old,cleared]);
+ assert.equal(await h.account(),null,`Logout cancels an identity write delayed in ${stage}`);
+ await h.offline.rememberOfflineAccount('new@example.test','new_username');
+ assert.deepEqual(await h.account(),{email:'new@example.test',username:'new_username'});
+}
+// Logout must also remove a put already in progress, before a new session saves.
+{
+ const h=identityHarness('put'),old=h.offline.rememberOfflineAccount('old@example.test','old_username');
+ await h.entered;
+ const cleared=h.offline.clearOfflineAlbum(),fresh=h.offline.rememberOfflineAccount('new@example.test','new_username');
+ h.release();await Promise.all([old,cleared,fresh]);
+ assert.deepEqual(await h.account(),{email:'new@example.test',username:'new_username'},'Old put cannot overwrite or delete the next session');
+}
+// Later username edits win even if an earlier cache put has not completed.
+{
+ const h=identityHarness('put'),first=h.offline.rememberOfflineAccount('owner@example.test','first_username');
+ await h.entered;
+ const latest=h.offline.rememberOfflineAccount('owner@example.test','latest_username');
+ h.release();await Promise.all([first,latest]);
+ assert.deepEqual(await h.account(),{email:'owner@example.test',username:'latest_username'},'Concurrent metadata saves keep the latest username');
+}
+console.log('PASS: 20 metadata edits add 0 manifest requests, 0 asset/photo downloads, and 0 cache scans; photo sync, logout during identity registration/open/put, and concurrent username edits are correct.');

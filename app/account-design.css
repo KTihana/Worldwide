@@ -206,3 +206,41 @@
 @media(orientation:landscape) and (max-height:540px){.account-map-art{inset:34px -59% 6px -35%}.account-welcome .connection-intro p,.account-welcome .connection-card .connection-help,.account-welcome .connection-actions .text-button,.account-welcome .account-card label,.account-welcome .account-forgot{font-size:12px}}
 
 .account-sheet-heading .account-identity{padding-bottom:0}
+
+/* Account creation stays compact, with comfortable text and touch targets. */
+.account-welcome.account-setup .account-card{padding-top:36px;padding-bottom:36px}
+.account-setup .account-form-copy{margin-bottom:24px}
+.account-welcome .account-setup-form{gap:16px}
+.account-field-hint,.account-field-error{font-size:12px;font-weight:400;line-height:1.5}
+.account-field-hint{color:#66776f}
+.account-field-error{color:#a05744}
+.account-welcome .account-card input[aria-invalid=true],.account-modal .account-username-entry input[aria-invalid=true]{border-color:#b27865;box-shadow:0 0 0 2px #b278650c}
+.account-modal .account-username-settings{border:1px solid #e2e8e4;background:#fafcfb;border-radius:18px;padding:20px;min-width:0}
+.account-username-settings form{display:grid;gap:10px}
+.account-username-entry{display:flex;align-items:center;gap:8px;min-width:0}
+.account-modal .account-username-entry input{width:100%;min-width:0;min-height:44px;border:1px solid #dce5de;background:#fff;border-radius:10px;padding:10px 12px;color:#20332d;font-size:16px;line-height:1.4}
+.account-modal .account-username-entry input:focus{border-color:#56846d;box-shadow:0 0 0 3px #28634d13;outline:0}
+.account-modal .account-username-entry input::placeholder{color:#99a59e;font-size:14px}
+.account-modal .account-username-entry .button{padding:0 12px;flex-shrink:0;color:#28634d}
+.account-modal .account-username-entry .button svg{display:none}
+.account-modal .account-username-entry .button:disabled{opacity:.5}
+.account-modal .account-username-settings p{font-size:12px;line-height:1.5;margin:0}
+.account-username-saved{display:flex;align-items:center;gap:5px;color:#28634d}
+@media(max-width:760px) and (orientation:portrait){
+ .account-screen.account-setup{padding-top:20px;padding-bottom:20px}
+ .account-setup .account-map-panel{height:104px;padding:24px}
+ .account-setup .account-map-art{inset:-65px -12% -95px 10%}
+ .account-welcome.account-setup .account-card{padding:24px}
+ .account-welcome.account-setup .account-card h1{font-size:28px}
+ .account-setup .account-form-copy{margin-bottom:22px}
+ .account-setup .account-form-copy p{font-size:13px;line-height:1.55}
+ .account-welcome .account-setup-form{gap:14px}
+ .account-setup .account-form-footer{margin-top:20px}
+}
+@media(orientation:landscape) and (max-height:540px){
+ .account-welcome.account-setup .account-card{padding:22px 28px}
+ .account-setup .account-form-copy{margin-bottom:18px}
+ .account-welcome .account-setup-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 16px;align-items:start}
+ .account-setup-form>.account-submit,.account-setup-form>.editor-error{grid-column:1/-1}
+ .account-setup .account-field-hint,.account-setup .account-field-error{font-size:12px;line-height:1.4}
+}

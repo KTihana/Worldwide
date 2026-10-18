@@ -12,7 +12,7 @@ async function until(fn,label){for(let i=0;i<150;i++){if(await fn())return;await
 app.whenReady().then(async()=>{try{
  server=spawn(process.env.WORLDWIDE_NODE||'/opt/homebrew/bin/node',['server/index.ts'],{cwd:root,env:{...process.env,PORT:'3381',ELSEWHERE_DATA_DIR:temp,ELSEWHERE_TLS_CERT:'',ELSEWHERE_TLS_KEY:''},stdio:'ignore'});
  await until(async()=>{try{return(await fetch(base+'/api/health')).ok}catch{return false}},'server');
- const setup=await fetch(base+'/api/auth/setup',{method:'POST',headers:{origin:base,'Content-Type':'application/json'},body:JSON.stringify({email:'paste@example.test',password:'private paste test password'})});assert.equal(setup.status,200);const [name,...value]=setup.headers.get('set-cookie').split(';')[0].split('=');
+ const setup=await fetch(base+'/api/auth/setup',{method:'POST',headers:{origin:base,'Content-Type':'application/json'},body:JSON.stringify({email:'paste@example.test',username:'paste_test',password:'private paste test password',passwordConfirmation:'private paste test password'})});assert.equal(setup.status,200);const [name,...value]=setup.headers.get('set-cookie').split(';')[0].split('=');
  win=new BrowserWindow({show:false,width:1400,height:900,webPreferences:{contextIsolation:true,sandbox:true,backgroundThrottling:false}});await win.webContents.session.cookies.set({url:base,name,value:value.join('=')});
  // Hold the first album response so a fast drop cannot be silently discarded
  // while the map is already visible but its saved records are still loading.
