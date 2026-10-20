@@ -4,7 +4,8 @@
 <p align="center">Worldwide is a private travel map where you can mark visited countries, fill their shapes with photos, and keep a photo gallery for each country. Use it offline on your PC or phone, with optional sync between devices.</p>
 <p align="center">
   <a href="https://github.com/KTihana/Worldwide/releases/latest/download/Worldwide-Android.apk"><img src="docs/download-android.svg" width="244" height="56" alt="Download Worldwide for Android"></a>
-  &nbsp;
+</p>
+<p align="center">
   <a href="https://github.com/KTihana/Worldwide/releases/latest/download/Worldwide-Windows-Setup.exe"><img src="docs/download-windows.svg" width="244" height="56" alt="Download Worldwide for Windows"></a>
 </p>
 <p align="center">Android 8+ · Windows 10/11<br>Install updates over the existing app to keep your photos.</p>
