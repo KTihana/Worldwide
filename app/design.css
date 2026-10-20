@@ -23,7 +23,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .map-canvas{background:radial-gradient(ellipse at 52% 42%,#f5f9f9 0%,#eaf1f2 52%,#dce7eb 100%)}
 .map-canvas::after{content:'';position:absolute;inset:0;box-shadow:inset 0 0 100px #385c6810;pointer-events:none}
 .atlas-graticule{fill:none;stroke:#9bb3ba;stroke-width:.5px;opacity:.36;pointer-events:none}
-.base-map-image{filter:saturate(.74) brightness(1.025)}
 .map-geography{animation:geography-arrive .28s ease-out}
 .map-geography.smooth{transition:transform .38s var(--ease)}
 .country-border{stroke:#899b90;stroke-width:.6px}
@@ -83,7 +82,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @keyframes geography-arrive{from{opacity:.35}to{opacity:1}}
 @media(max-width:1000px){:root{--space:20px}.atlas-brand span{font-size:21px}.search-dock{width:260px;max-width:calc(100vw - 420px)}.albums-button{width:48px;padding:0}.albums-button span{display:none}.map-filters button{padding:0 12px}.map-meta-actions{border-radius:18px}.map-style-button,.save-map-button{font-size:12px}}
 @media(max-width:600px){
- :root{--space:16px;--gap:8px;--panel:360px}
+ :root{--space:16px;--gap:8px;--panel:360px;--top:calc(var(--space) + 8px + env(safe-area-inset-top,0px))}
  .atlas-brand{height:44px;gap:8px}.atlas-brand span{font-size:22px}.atlas-brand svg{width:26px;height:26px}
  .top-controls{gap:8px}.floating-button,.account-button,.albums-button{width:44px;height:44px;min-height:44px}
  .search-dock{left:var(--left);right:var(--right);top:calc(var(--top) + 58px);transform:none;width:auto;max-width:none}
@@ -101,7 +100,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .toast{bottom:calc(var(--bottom) + 74px);max-width:calc(100vw - 32px);font-size:12px}
 }
 @media(orientation:landscape) and (max-height:600px) and (max-width:1100px){
- :root{--space:12px;--panel:300px;--control:44px}
+ :root{--space:12px;--panel:300px;--control:44px;--top:calc(var(--space) + 8px + env(safe-area-inset-top,0px))}
  .atlas-brand{height:44px;gap:8px}.atlas-brand span{font-size:20px}.atlas-brand svg{width:26px;height:26px}
  .search-dock{left:50%;right:auto;transform:translateX(-50%);top:var(--top);width:240px;max-width:calc(100vw - 380px)}.search-field{height:44px;padding:0 14px}.search-field input{font-size:16px}.search-shortcut{display:none}
  .top-controls{top:var(--top);right:var(--right);gap:8px}.floating-button,.albums-button,.account-button{height:44px;width:44px;padding:0}.albums-button span{display:none}
@@ -124,4 +123,33 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .wide-map-prompt{position:fixed;z-index:22;top:calc(var(--top) + 124px);left:50%;transform:translateX(-50%);display:block;max-width:calc(100vw - 48px)}
  .wide-map-prompt button,.wide-map-prompt p{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border:1px solid #dce5df;border-radius:24px;background:#fff;color:#496b58;font-size:12px;line-height:1.4;box-shadow:0 3px 12px #20332d0a;white-space:nowrap}
  body:has([role=dialog]) .wide-map-prompt{display:none}
+}
+
+/* Keep transient messages and open menus out of other controls' hit areas. */
+.toast{top:calc(var(--top) + var(--control) + 16px);bottom:auto;max-width:min(420px,calc(100vw - var(--left) - var(--right)))}
+.toast>span{min-width:0;overflow-wrap:anywhere}
+.toast button{flex-shrink:0}
+.country-open .region-menu{left:50%;transform:translateX(-50%);width:min(290px,calc(100vw - var(--panel) - var(--left) - var(--right) - 20px))}
+.map-app:has(#region-menu) .map-zoom,
+.map-app:has(#region-menu) .map-meta,
+.map-app:has(#region-menu) .toast,
+.map-app:has(.search-results) .toast,
+.map-app:has([aria-modal=true]) .toast{visibility:hidden}
+@media(max-width:600px) and (orientation:portrait){
+ .toast{top:calc(var(--top) + 116px)}
+ .country-open .map-zoom{flex-direction:row;align-items:center}
+ .country-open .map-zoom>span{width:1px;height:22px;margin:0 4px}
+}
+.region-menu{display:flex;flex-direction:column;max-height:calc(100dvh - var(--top) - var(--control) - var(--bottom) - 84px)}
+.region-search{flex-shrink:0}
+.region-options{min-height:0;flex-shrink:1}
+@media(orientation:landscape) and (max-width:700px) and (max-height:600px){
+ .country-open .search-dock{display:none}
+}
+@media(orientation:landscape) and (max-width:700px) and (max-height:600px){
+ .country-open .atlas-navigation{left:var(--left);transform:none;max-width:calc(100vw - var(--panel) - var(--left) - var(--right) - 76px)}
+ .country-open .region-selector{padding:0 8px;gap:4px}
+ .country-open .region-selector span{max-width:55px}
+ .country-open .back-region{width:36px;min-width:36px}
+ .country-open .region-menu{left:0;transform:none}
 }

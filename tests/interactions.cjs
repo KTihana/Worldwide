@@ -19,7 +19,19 @@ app.whenReady().then(async()=>{try{
  const failures=[];window.webContents.on('console-message',(_e,...args)=>{if(typeof args[0]==='object'&&args[0].level==='error')failures.push(args[0].message)});
  await window.loadURL(base);await until(()=>js(`document.querySelectorAll('[data-country]').length>200`),'world');
  assert.equal(await js(`!!document.querySelector('.map-hint')`),false);
- assert.equal(await js(`!!document.querySelector('.base-map-image')`),true);
+ assert.equal(await js(`!!document.querySelector('.map-geography image')`),false,'Map geography uses vector paths rather than a raster basemap');
+ async function vectorBorders(){
+  assert.equal(await js(`Array.from(document.querySelectorAll('.country-border')).every(path=>path instanceof SVGPathElement&&getComputedStyle(path).stroke!=='none'&&getComputedStyle(path).vectorEffect==='non-scaling-stroke')`),true,'All borders remain visible vectors with fixed screen width');
+  assert.equal(await js(`getComputedStyle(document.querySelector('.map-land')).fill`),'url("#map-terrain")','Land is clipped by the vector country shape');
+ }
+ await vectorBorders();
+ for(let i=0;i<7;i++)await click('Zoom in');
+ await until(()=>js(`document.querySelector('[aria-label="Zoom in"]').disabled`),'maximum map zoom');await pause(450);
+ await vectorBorders();
+ await window.webContents.capturePage();
+ await js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);await pause(150);
+ await window.webContents.capturePage().then(image=>require('node:fs').writeFileSync('/tmp/worldwide-vector-zoom.png',image.toPNG()));
+ await click('Show whole world');await pause(450);
  await click('Choose continent or country');await until(()=>js(`!!document.querySelector('#region-menu')`),'picker');await click('Europe');await until(()=>js(`document.querySelectorAll('[data-country]').length<100&&!!document.querySelector('[data-country="HRV"]')`),'continent');
  await click('Choose continent or country');await click('Croatia');await until(()=>js(`!!document.querySelector('.country-modal')`),'country');
  const order=await js(`Array.from(document.querySelectorAll('[data-photo-id]')).map(el=>el.dataset.photoId)`);assert.equal(order.length,2);
@@ -62,5 +74,26 @@ app.whenReady().then(async()=>{try{
  await click('Check for updates');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Refresh to update')`),'new website available');
  assert.equal(await js(`window.worldwideRefreshSentinel`),'kept','An available update never reloads automatically');
  await click('Refresh to update');await until(()=>js(`document.querySelector('.app-updates')?.textContent.includes('Finish your current upload or edit')`),'refresh respects unsaved-work guard');assert.equal(await js(`window.worldwideRefreshSentinel`),'kept');
- assert.deepEqual(failures,[]);console.log('PASS: desktop continent/country picker, Antarctica, gallery pointer reorder, crop entry, thumbnail deletion/cancel, updates. Wheel frame times:',timing);
+ await click('Close account');
+ window.setContentSize(844,390);
+ await js(`(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(pointer: coarse)')Object.defineProperty(result,'matches',{value:true});return result};Object.defineProperty(window.screen,'width',{configurable:true,value:844});Object.defineProperty(window.screen,'height',{configurable:true,value:390})})()`);
+ await click('Choose continent or country');await until(()=>js(`!!document.querySelector('#region-menu')`),'phone place menu');
+ assert.equal(await js(`document.querySelectorAll('#region-menu input').length`),0,'Phone place menu has no search field to open the keyboard');
+ assert.equal(await js(`document.activeElement.tagName==='INPUT'`),false,'Opening the phone menu never focuses a text field');
+ assert.equal(await js(`document.querySelectorAll('#region-menu .region-options button').length>200`),true,'All continents and countries can be browsed directly');
+ await click('Italy');await until(()=>js(`!!document.querySelector('.empty-photos')`),'empty phone album');
+ assert.equal(await js(`document.querySelectorAll('.photos-heading .upload-button,.add-more-photos').length`),0,'Empty album has only the first-memory action');
+ await js(`window.photoChooserClicks=0;document.querySelector('input[type=file]').click=()=>window.photoChooserClicks++;true`);
+ await js(`document.querySelector('.empty-photos').click()`);
+ assert.equal(await js(`window.photoChooserClicks`),1,'First memory opens the photo chooser');
+ const phoneImage=await require('sharp')({create:{width:16,height:16,channels:3,background:'#b5cfa4'}}).png().toBuffer();
+ await js(`(()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(phoneImage.toString('base64'))}),c=>c.charCodeAt(0)),transfer=new DataTransfer();transfer.items.add(new File([bytes],'phone-memory.png',{type:'image/png'}));const input=document.querySelector('input[type=file]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+ await until(()=>js(`!!document.querySelector('.add-more-photos:not(:disabled)')`),'first photo saved');
+ assert.equal(await js(`!!document.querySelector('.empty-photos')`),false,'Saved album replaces its empty state');
+ assert.equal(await js(`!!document.querySelector('.photos-heading .upload-button')`),false,'Photo heading has no duplicate upload control');
+ assert.equal(await js(`!!(document.querySelector('.photo-drop-area').compareDocumentPosition(document.querySelector('.add-more-photos'))&Node.DOCUMENT_POSITION_FOLLOWING)`),true,'Add more photos follows the gallery');
+ await click('Add more photos');assert.equal(await js(`window.photoChooserClicks`),2,'Add more photos uses the same chooser');
+ await window.webContents.capturePage();await js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);await pause(150);
+ await window.webContents.capturePage().then(image=>require('node:fs').writeFileSync('/tmp/worldwide-phone-photo-controls.png',image.toPNG()));
+ assert.deepEqual(failures,[]);console.log('PASS: desktop/phone place menus, single photo-add action, upload, gallery reorder, crop, delete and updates. Wheel frame times:',timing);
  }catch(error){console.error(error);process.exitCode=1}finally{window?.destroy();server?.kill();await pause(300);rmSync(temp,{recursive:true,force:true});app.exit(process.exitCode||0)}});

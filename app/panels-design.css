@@ -32,6 +32,9 @@
   box-shadow:0 20px 56px rgb(18 46 33 / 18%),0 2px 12px rgb(18 46 33 / 7%);
 }
 .country-panel{padding:24px}
+.album-notice{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 12px;margin:0 0 16px;border:1px solid #c9dfd2;border-radius:12px;background:#eaf3ee;color:#28634d;font-size:12px;line-height:1.5}
+.album-notice>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.album-notice .icon-button{color:inherit}
 .country-header{align-items:flex-start;gap:8px;margin-bottom:24px}
 .country-header .country-region{
   color:#66776f;
@@ -70,7 +73,8 @@
 .photos-heading{margin-bottom:12px}
 .photos-heading h3{color:#20332d;font-size:16px;font-weight:650;letter-spacing:-.025em}
 .photos-heading h3 span{color:#66776f;font-size:12px;font-weight:500}
-.upload-button{padding:0 14px;min-height:44px;border-radius:11px;font-size:12px}
+.add-more-photos{width:100%;min-height:44px;margin-top:12px;border-style:dashed;border-radius:12px;color:#28634d;background:#f6f9f7}
+.add-more-photos:hover:not(:disabled){background:#eef5f0}
 .adjust-cover-button{color:#28634d;font-size:12px;font-weight:550;margin:-2px 0 8px}
 .photo-import-hint{color:#66776f;font-size:12px;line-height:1.5;margin:0 0 12px}
 .photo-drop-area{border-radius:15px}

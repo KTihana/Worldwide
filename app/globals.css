@@ -468,7 +468,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 
 .app-updates{border-top:1px solid var(--line);padding-top:20px;margin:20px 0;display:grid;gap:10px}.app-updates h3{display:flex;align-items:center;gap:8px;font-size:14px;margin:0}.app-updates p,.app-updates small{font-size:12px;color:#758279;margin:0}.app-updates .button{text-decoration:none;justify-self:start}
 
-.overview .country-border{stroke:none;transition:none}.overview .country-border.visited{stroke:#567062}.overview.detailed-borders .country-border{stroke:#87938a}.overview .country-region:hover>.country-border{stroke:#4f7161}.overview .antarctica-border,.overview .country-region:hover>.antarctica-border{stroke:none}.overview.detailed-borders .antarctica-border{stroke:#a8b5b8}
 
 .photo-import-hint{font-size:11px;color:var(--muted);margin:0 0 12px;line-height:1.5}
 .app-updates progress{width:min(100%,280px);height:6px;accent-color:var(--green);border:0;border-radius:99px;overflow:hidden}.app-updates progress::-webkit-progress-bar{background:var(--line)}.app-updates progress::-webkit-progress-value{background:var(--green);border-radius:99px}.app-updates p.error{color:#a33f36;line-height:1.45}.app-updates p:empty{display:none}

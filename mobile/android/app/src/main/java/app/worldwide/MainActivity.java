@@ -76,12 +76,18 @@ public class MainActivity extends Activity {
         syncExecutor.scheduleWithFixedDelay(()->requestSync(false),5,15,java.util.concurrent.TimeUnit.SECONDS);
         receivePairLink(getIntent());
         web=new WebView(this);web.setBackgroundColor(Color.rgb(237,242,239));
-        setContentView(web);
-        web.setOnApplyWindowInsetsListener((view,insets)->{
+        // Inset the WebView's container: WebView padding does not reliably move
+        // CSS fixed/absolute controls out from underneath Android's status bar.
+        android.widget.FrameLayout content=new android.widget.FrameLayout(this);
+        content.setBackgroundColor(Color.rgb(237,242,239));
+        content.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        content.setOnApplyWindowInsetsListener((view,insets)->{
             if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets safe=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());view.setPadding(safe.left,safe.top,safe.right,safe.bottom);}
             else view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
             return insets;
         });
+        setContentView(content);
+        content.requestApplyInsets();
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(false);settings.setJavaScriptCanOpenWindowsAutomatically(false);

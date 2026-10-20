@@ -23,6 +23,7 @@ public final class OrientationSmokeTests extends Instrumentation {
             check(!"app.worldwide".equals(getTargetContext().getPackageName()),"Orientation test requires a disposable app package");
             activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForPage(activity);
+            checkStatusBarClearance(activity);
             run(this,activity);
             report.putString("stream","Portrait entry/login, landscape map, rejected orientation modes, and portrait sign-out passed.\n");
         }catch(Throwable error){
@@ -45,6 +46,21 @@ public final class OrientationSmokeTests extends Instrumentation {
         throw new AssertionError("Bundled entry or album page did not become ready");
     }
     private static void check(boolean condition,String label){if(!condition)throw new AssertionError(label);}
+    private void checkStatusBarClearance(MainActivity activity)throws Exception{
+        Field field=MainActivity.class.getDeclaredField("web");field.setAccessible(true);
+        runOnMainSync(()->{
+            try{
+                WebView web=(WebView)field.get(activity);
+                int[] position=new int[2];web.getLocationOnScreen(position);
+                android.view.WindowInsets insets=activity.getWindow().getDecorView().getRootWindowInsets();
+                int top=android.os.Build.VERSION.SDK_INT>=30
+                    ?insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()).top
+                    :insets.getSystemWindowInsetTop();
+                check(position[1]>=top,"Web viewport clears the status bar and display cutout");
+                check(web.getPaddingTop()==0,"Safe area moves the viewport instead of padding web content");
+            }catch(ReflectiveOperationException error){throw new AssertionError(error);}
+        });
+    }
     private static int requested(Instrumentation test,MainActivity activity){
         AtomicInteger value=new AtomicInteger();
         test.runOnMainSync(()->value.set(activity.getRequestedOrientation()));
