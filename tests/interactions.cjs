@@ -77,6 +77,9 @@ app.whenReady().then(async()=>{try{
  await click('Close account');
  window.setContentSize(844,390);
  await js(`(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(pointer: coarse)')Object.defineProperty(result,'matches',{value:true});return result};Object.defineProperty(window.screen,'width',{configurable:true,value:844});Object.defineProperty(window.screen,'height',{configurable:true,value:390})})()`);
+ await pause(450);
+ const headerOnly=await js(`(()=>{const root=document.documentElement,read=()=>Object.fromEntries(['.map-canvas','.world-map','.map-geography','.map-zoom','.atlas-navigation','.search-dock'].map(selector=>{const e=document.querySelector(selector),r=e.getBoundingClientRect();return [selector,[r.x,r.y,r.width,r.height,getComputedStyle(e).transform]]})),before=read(),previous=document.querySelector('.atlas-brand').getBoundingClientRect().top;root.style.setProperty('--native-header-inset','40px');const after=read(),moved=document.querySelector('.atlas-brand').getBoundingClientRect().top>previous;root.style.removeProperty('--native-header-inset');return {same:JSON.stringify(before)===JSON.stringify(after),moved}})()`);
+ assert.deepEqual(headerOnly,{same:true,moved:true},'Header clearance moves only the header, preserving map framing, water, zoom and navigation');
  await click('Choose continent or country');await until(()=>js(`!!document.querySelector('#region-menu')`),'phone place menu');
  assert.equal(await js(`document.querySelectorAll('#region-menu input').length`),0,'Phone place menu has no search field to open the keyboard');
  assert.equal(await js(`document.activeElement.tagName==='INPUT'`),false,'Opening the phone menu never focuses a text field');

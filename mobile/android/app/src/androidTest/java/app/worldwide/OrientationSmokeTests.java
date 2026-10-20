@@ -48,18 +48,25 @@ public final class OrientationSmokeTests extends Instrumentation {
     private static void check(boolean condition,String label){if(!condition)throw new AssertionError(label);}
     private void checkStatusBarClearance(MainActivity activity)throws Exception{
         Field field=MainActivity.class.getDeclaredField("web");field.setAccessible(true);
+        CountDownLatch completed=new CountDownLatch(1);AtomicBoolean fullMap=new AtomicBoolean(),clearHeader=new AtomicBoolean();
         runOnMainSync(()->{
             try{
                 WebView web=(WebView)field.get(activity);
+                android.view.View content=activity.findViewById(android.R.id.content);
+                fullMap.set(web.getWidth()==content.getWidth()&&web.getHeight()==content.getHeight()
+                    &&web.getPaddingTop()==0&&web.getPaddingLeft()==0&&web.getPaddingRight()==0&&web.getPaddingBottom()==0);
                 int[] position=new int[2];web.getLocationOnScreen(position);
                 android.view.WindowInsets insets=activity.getWindow().getDecorView().getRootWindowInsets();
                 int top=android.os.Build.VERSION.SDK_INT>=30
                     ?insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()).top
                     :insets.getSystemWindowInsetTop();
-                check(position[1]>=top,"Web viewport clears the status bar and display cutout");
-                check(web.getPaddingTop()==0,"Safe area moves the viewport instead of padding web content");
-            }catch(ReflectiveOperationException error){throw new AssertionError(error);}
+                float required=Math.max(0,top-position[1])/activity.getResources().getDisplayMetrics().density;
+                web.evaluateJavascript("Boolean(document.querySelector('.atlas-brand')?.getBoundingClientRect().top >= "+required+" && document.querySelector('.top-controls')?.getBoundingClientRect().top >= "+required+")",value->{clearHeader.set("true".equals(value));completed.countDown();});
+            }catch(ReflectiveOperationException error){completed.countDown();}
         });
+        check(completed.await(10,TimeUnit.SECONDS),"Header clearance measured");
+        check(fullMap.get(),"Water and map retain the complete viewport without inset margins");
+        check(clearHeader.get(),"Only the phone header clears the status bar");
     }
     private static int requested(Instrumentation test,MainActivity activity){
         AtomicInteger value=new AtomicInteger();

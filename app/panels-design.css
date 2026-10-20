@@ -32,9 +32,6 @@
   box-shadow:0 20px 56px rgb(18 46 33 / 18%),0 2px 12px rgb(18 46 33 / 7%);
 }
 .country-panel{padding:24px}
-.album-notice{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 12px;margin:0 0 16px;border:1px solid #c9dfd2;border-radius:12px;background:#eaf3ee;color:#28634d;font-size:12px;line-height:1.5}
-.album-notice>span{flex:1;min-width:0;overflow-wrap:anywhere}
-.album-notice .icon-button{color:inherit}
 .country-header{align-items:flex-start;gap:8px;margin-bottom:24px}
 .country-header .country-region{
   color:#66776f;

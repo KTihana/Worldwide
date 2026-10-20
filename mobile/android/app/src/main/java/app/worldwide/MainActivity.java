@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final String APP_ORIGIN="https://app.worldwide.local";
     private WebView web;
+    private int headerInsetTop;
     private SharedPreferences prefs;
     private File album;
     private LocalAlbum local;
@@ -76,24 +77,23 @@ public class MainActivity extends Activity {
         syncExecutor.scheduleWithFixedDelay(()->requestSync(false),5,15,java.util.concurrent.TimeUnit.SECONDS);
         receivePairLink(getIntent());
         web=new WebView(this);web.setBackgroundColor(Color.rgb(237,242,239));
-        // Inset the WebView's container: WebView padding does not reliably move
-        // CSS fixed/absolute controls out from underneath Android's status bar.
-        android.widget.FrameLayout content=new android.widget.FrameLayout(this);
-        content.setBackgroundColor(Color.rgb(237,242,239));
-        content.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));
-        content.setOnApplyWindowInsetsListener((view,insets)->{
-            if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets safe=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());view.setPadding(safe.left,safe.top,safe.right,safe.bottom);}
-            else view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
+        setContentView(web);
+        // Keep the map edge to edge. Only the header uses status-bar clearance.
+        web.setOnApplyWindowInsetsListener((view,insets)->{
+            headerInsetTop=android.os.Build.VERSION.SDK_INT>=30
+                ?insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()).top
+                :insets.getSystemWindowInsetTop();
+            applyHeaderInset();
             return insets;
         });
-        setContentView(content);
-        content.requestApplyInsets();
+        web.requestApplyInsets();
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(false);settings.setJavaScriptCanOpenWindowsAutomatically(false);
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         web.addJavascriptInterface(new Bridge(),"WorldwideNative");
         web.setWebViewClient(new WebViewClient(){
+            @Override public void onPageFinished(WebView view,String url){if(trusted(Uri.parse(url)))applyHeaderInset();}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){String path=request.getUrl().getPath();if(request.isForMainFrame()&&"https://github.com/KTihana/Worldwide/releases/latest/download/Worldwide-Android.apk".equals(request.getUrl().toString())){try{startActivity(new Intent(Intent.ACTION_VIEW,request.getUrl()));}catch(Exception ignored){}return true;}return !trusted(request.getUrl())||request.isForMainFrame()&&!("/".equals(path)||"/index.html".equals(path));}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 if(!trusted(request.getUrl()))return resource(403,"text/plain","External navigation is disabled".getBytes(StandardCharsets.UTF_8),false);
@@ -118,6 +118,11 @@ public class MainActivity extends Activity {
             }
         });
         web.loadUrl(APP_ORIGIN+"/");
+    }
+    private void applyHeaderInset(){
+        if(web==null||web.getUrl()==null||!trusted(Uri.parse(web.getUrl())))return;
+        float top=headerInsetTop/getResources().getDisplayMetrics().density;
+        web.evaluateJavascript("document.documentElement.style.setProperty('--native-header-inset','"+top+"px')",null);
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);receivePairLink(intent);if(web!=null)web.evaluateJavascript("window.dispatchEvent(new Event('worldwide-pair-link'))",null);}
     private void receivePairLink(Intent intent){if(intent!=null&&Intent.ACTION_VIEW.equals(intent.getAction())&&intent.getData()!=null){String value=intent.getData().toString();if(value.length()<=4096&&"worldwide".equals(intent.getData().getScheme())&&"pair".equals(intent.getData().getHost()))pendingPairLink=value;}}
