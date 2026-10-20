@@ -121,7 +121,8 @@ public class MainActivity extends Activity {
     }
     private void applyHeaderInset(){
         if(web==null||web.getUrl()==null||!trusted(Uri.parse(web.getUrl())))return;
-        float top=headerInsetTop/getResources().getDisplayMetrics().density;
+        int[] position=new int[2];web.getLocationOnScreen(position);
+        float top=Math.max(0,headerInsetTop-position[1])/getResources().getDisplayMetrics().density;
         web.evaluateJavascript("document.documentElement.style.setProperty('--native-header-inset','"+top+"px')",null);
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);receivePairLink(intent);if(web!=null)web.evaluateJavascript("window.dispatchEvent(new Event('worldwide-pair-link'))",null);}
