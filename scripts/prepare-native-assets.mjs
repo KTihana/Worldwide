@@ -1,0 +1,11 @@
+import {cp,mkdir,rm,readFile,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+const root=resolve(import.meta.dirname,'..'),assets=resolve(root,'mobile/android/app/src/main/assets');
+await mkdir(assets,{recursive:true});
+await rm(resolve(assets,'www'),{recursive:true,force:true});
+await rm(resolve(assets,'map'),{recursive:true,force:true});
+await mkdir(resolve(assets,'map'),{recursive:true});
+for(const name of ['countries.json','map-styles.json','graticules.json'])await cp(resolve(root,'app/data',name),resolve(assets,'map',name));
+for(const [from,to] of [['app/data/projections','map/projections'],['public/geography','map/geography'],['public/terrain','map/terrain']])await cp(resolve(root,from),resolve(assets,to),{recursive:true});
+await cp(resolve(root,'app/data/world.json'),resolve(assets,'widget-world.json'));
+console.log('Prepared native map geometry and terrain. No webpage or JavaScript is bundled in Android.');

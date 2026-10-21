@@ -3,3 +3,5 @@
 local.properties
 app/src/main/assets/www/
 app/src/main/assets/widget-world.json
+.kotlin/
+app/src/main/assets/map/

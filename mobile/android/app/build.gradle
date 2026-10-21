@@ -3,9 +3,12 @@ android {
     namespace 'app.worldwide'
     compileSdk 36
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 12; versionName '0.1.11'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
+    defaultConfig { applicationId 'app.worldwide'; minSdk 26; targetSdk 36; versionCode 13; versionName '0.2.0'; testInstrumentationRunner 'app.worldwide.NativeSmokeTests' }
     if (providers.gradleProperty('worldwideNativeTest').orNull == 'true') {
         defaultConfig { applicationId 'app.worldwide.nativetest' }
+    }
+    if (providers.gradleProperty('worldwideKotlinTest').orNull == 'true') {
+        defaultConfig { applicationId 'app.worldwide.nativetest'; testInstrumentationRunner 'app.worldwide.KotlinSmokeTests' }
     }
     // Disposable, separate package for update-retention tests; production identity is unchanged.
     if (providers.gradleProperty('worldwideUpdateTest').orNull == 'true') {
@@ -36,6 +39,7 @@ android {
     buildTypes { release { minifyEnabled false; signingConfig signingConfigs.release } }
 }
 dependencies {
+    implementation 'com.squareup.okhttp3:okhttp:5.3.0'
     // Embedded ZXing expects ContextCompat/ActivityCompat but omits them from its POM.
     implementation 'androidx.core:core:1.13.1'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'

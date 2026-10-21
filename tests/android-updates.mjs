@@ -9,7 +9,7 @@ const sdk=process.env.ANDROID_HOME||join(homedir(),'Library/Android/sdk'),java=p
 const adb=join(sdk,'platform-tools',process.platform==='win32'?'adb.exe':'adb'),tools=join(sdk,'build-tools/36.0.0');
 const env={...process.env,JAVA_HOME:java,ANDROID_HOME:sdk};
 function run(command,args,{cwd=root,input}={}){const batch=process.platform==='win32'&&command.endsWith('.bat');const result=spawnSync(batch?`"${command}"`:command,args,{cwd,env,input,encoding:input?undefined:'utf8',maxBuffer:20*1024*1024,shell:batch});assert.equal(result.status,0,String(result.stderr||'')+String(result.stdout||''));return String(result.stdout)}
-const emulator=run(adb,['devices']).split('\n').find(line=>/^emulator-\d+\s+device$/.test(line.trim()))?.split('\t')[0];assert.ok(emulator,'Start a dedicated emulator. Physical phones are never targeted.');
+const detected=run(adb,['devices']).split('\n').find(line=>/^emulator-\d+\s+device$/.test(line.trim()))?.split('\t')[0];const emulator=process.env.ANDROID_SERIAL||detected;assert(/^emulator-\d+$/.test(emulator||''));assert.ok(emulator,'Start a dedicated emulator. Physical phones are never targeted.');
 const device=(args,options)=>run(adb,['-s',emulator,...args],options),temp=await mkdtemp(join(tmpdir(),'worldwide-update-test-'));
 const app='app.worldwide.updatetest',code=Math.floor(Date.now()/1000),version=`99.0.${code+1}`;
 const wrapper=join(android,process.platform==='win32'?'gradlew.bat':'gradlew');
