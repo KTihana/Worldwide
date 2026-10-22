@@ -35,7 +35,7 @@ try{
   const parts=relative(source,path).split(sep);
   return !parts.some(part=>['build','.gradle','.idea'].includes(part))&&!relative(source,path).startsWith(['app','src','main','assets','www'].join(sep));
  }});
- await cp(join(root,'dist'),join(android,'app/src/main/assets/www'),{recursive:true,filter:path=>!path.endsWith('.gz')&&!path.endsWith('.br')});
+
  const manifest=await readFile(join(android,'app/src/main/AndroidManifest.xml'),'utf8');
  assert.match(manifest,/<activity\b[^>]*android:name="\.MainActivity"[^>]*android:screenOrientation="portrait"/,'MainActivity must start in portrait before this test is built.');
  const gradle=join(android,'app/build.gradle');
@@ -46,8 +46,8 @@ try{
  }
  const result=await run(adb,['-s',device,'shell','am','instrument','-w','-r',`${testPackage}/app.worldwide.OrientationSmokeTests`],{live:true});
  assert.match(result,/INSTRUMENTATION_CODE: -1/,'Orientation instrumentation did not finish successfully.');
- assert.match(result,/portrait sign-out passed/,'Orientation checks did not run.');
- console.log(`PASS: Android portrait entry/login and landscape map (${device}); production package/data untouched.`);
+ assert.match(result,/portrait account and landscape return passed/,'Orientation checks did not run.');
+ console.log(`PASS: Native Android map, account orientation and header clearance (${device}); production package/data untouched.`);
 }finally{
  if(installed)for(const name of [testPackage,packageName])await run(adb,['-s',device,'uninstall',name],{allowFailure:true}).catch(()=>{});
  await rm(temp,{recursive:true,force:true});

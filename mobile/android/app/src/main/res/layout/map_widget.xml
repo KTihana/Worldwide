@@ -10,45 +10,29 @@
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="56dp"
+        android:minHeight="48dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <LinearLayout
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/widget_title"
+            style="@style/WidgetTitle"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/widget_title"
-                style="@style/WidgetTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:text="Worldwide" />
-
-            <TextView
-                android:id="@+id/widget_subtitle"
-                style="@style/WidgetSubtitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:text="Your places, close to home" />
-        </LinearLayout>
-
+            android:minHeight="48dp"
+            android:gravity="center_vertical"
+            android:maxWidth="260dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:text="Earth" />
         <ImageButton
-            android:id="@+id/widget_open"
+            android:id="@+id/widget_next"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/widget_brand_ripple"
-            android:contentDescription="Open Worldwide"
-            android:padding="11dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/worldwide_icon" />
+            android:background="@android:color/transparent"
+            android:contentDescription="Next country with photos"
+            android:padding="16dp"
+            android:src="@drawable/widget_chevron_right" />
     </LinearLayout>
 
     <ViewFlipper
@@ -143,40 +127,4 @@
         </FrameLayout>
     </ViewFlipper>
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <ImageButton
-            android:id="@+id/widget_back"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/widget_control_ripple"
-            android:contentDescription="Back to world map"
-            android:padding="12dp"
-            android:src="@drawable/widget_chevron_left"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/widget_hint"
-            style="@style/WidgetHint"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:maxLines="2"
-            android:ellipsize="end"
-            android:text="Explore memories" />
-
-        <ImageButton
-            android:id="@+id/widget_next"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/widget_control_ripple"
-            android:contentDescription="Next country with photos"
-            android:padding="12dp"
-            android:src="@drawable/widget_chevron_right" />
-    </LinearLayout>
 </LinearLayout>

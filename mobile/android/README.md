@@ -4,7 +4,7 @@ Install `../../releases/Worldwide-Android.apk` on Android 8.0 or newer. It opens
 
 ## Optional computer sync
 
-On your computer, open **Your album → Connect phone**. On Android, open **Your album → Connect computer → Scan computer QR**. Use the same Wi-Fi. The same QR works in the Android app or the phone browser.
+On your computer, open **Your album → Connect phone**. On Android, open **Your account → Connect computer**. Use the same Wi-Fi. The same QR works in the Android app or the phone browser.
 
 Both apps keep their own albums. Connecting combines your photos and visits, then syncs changes both ways. Offline phone edits wait safely for the next connection. If the same field was changed on both devices while apart, the waiting phone edit is applied when syncing; edits to different fields are retained. Disconnecting keeps the phone album. An album already linked to another account is kept separate to prevent sharing it accidentally.
 
@@ -14,9 +14,9 @@ Install updates over the existing app to keep photos. **Your album → App updat
 
 Install the updated APK over the existing app, then long-press an empty part of your Android home screen and choose **Widgets → Worldwide → Worldwide map**. Drag it onto the wallpaper and resize it as you like. The widget has a transparent background.
 
-Tap a country to reveal a photo and its fitted silhouette. Widely scattered territories focus on their main island group. Tap the photo to change memories; the back chevron returns to the world. The forward chevron browses countries with cached photos, falling back to the country catalogue when the album is empty. The globe opens Worldwide. Each widget keeps its own selection. Small country targets have the larger forward control as an alternative.
+Tap a country to reveal a photo and its fitted silhouette. Widely scattered territories focus on their main island group. Tap the photo to change memories; tap the country title to return to Earth. The forward chevron browses countries with cached photos, falling back to the country catalogue when the album is empty. The header contains only the title and a thin next chevron; there is no app shortcut. Each widget keeps its own selection. Small country targets have the larger forward control as an alternative.
 
-The wallpaper remains visible through the map and around the photo. Typography uses Android’s system sans, a 22–26sp title and 12sp supporting text. Controls have 48dp targets. The country reveal uses a single 180ms fade, with a static fallback when system animation is disabled; there is no idle animation or timer. Android 12+ gets exact launcher sizes and wallpaper-aware text, with portrait/landscape layouts on older versions. This is an Android implementation of the hierarchy and restraint in Apple’s [Widgets](https://developer.apple.com/design/human-interface-guidelines/widgets), [Materials](https://developer.apple.com/design/human-interface-guidelines/materials), and [fluid interface guidance](https://developer.apple.com/videos/play/wwdc2018/803/), informed by the public [Frontend Design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md). It does not emulate live wallpaper blur or continuous map gestures.
+The Earth map displays available covers inside country outlines. The wallpaper remains visible through the map and around the photo. Typography uses Android’s system sans, a 22–26sp title without supporting text. Controls have 48dp targets. The country reveal uses a single 180ms fade, with a static fallback when system animation is disabled; there is no idle animation or timer. Android 12+ gets exact launcher sizes and wallpaper-aware text, with portrait/landscape layouts on older versions. This is an Android implementation of the hierarchy and restraint in Apple’s [Widgets](https://developer.apple.com/design/human-interface-guidelines/widgets), [Materials](https://developer.apple.com/design/human-interface-guidelines/materials), and [fluid interface guidance](https://developer.apple.com/videos/play/wwdc2018/803/), informed by the public [Frontend Design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md). It does not emulate live wallpaper blur or continuous map gestures.
 
 The native widget works offline and refreshes after the app saves changes. The chosen cover and saved photo crop are respected. If a cover has not downloaded, another cached photo is used. Disconnecting computer sync keeps your local photos and widget.
 
@@ -34,7 +34,7 @@ npm run build
 npm run android:build
 ```
 
-The first build downloads Gradle and Android build dependencies from their official repositories. The output is `releases/Worldwide-Android.apk`. Build tooling does not use or include your album. Bundled assets come only from `dist/`.
+The first build downloads Gradle and Android build dependencies from their official repositories. The output is `releases/Worldwide-Android.apk`. Build tooling does not use or include your album. Android bundles map geometry and terrain from `app/data/` and `public/`; it does not bundle a webpage or JavaScript.
 
 The build creates a private signing key at `data/build-keys/worldwide-android.p12` and its password file beside it. These files are ignored by Git and never included in the installer. **Back up this directory privately**: future APK updates need the same key. This is a personally signed sideload build, not a Play Store release or a publisher-verified distribution.
 
@@ -52,11 +52,13 @@ The test uses temporary PC albums and the separate `app.worldwide.nativetest` pa
 
 ## Implementation
 
-The Android wrapper serves bundled files at an internal HTTPS origin and blocks external page navigation. Only that trusted app can access the native bridge. Album edits go to the phone’s private SQLite database and durable sync queue first. Optional background sync contacts the configured computer; the bridge supplies its origin, stores its session cookie privately, and never exposes the cookie to JavaScript. HTTP connections are limited to local IPv4 addresses; separately configured remote servers must use HTTPS. Redirects and invalid certificates are rejected.
+The Android application is written in Kotlin. Native Android controls and a hardware-accelerated Canvas map replace the WebView. Country borders remain vector paths at every zoom level. Geometry is cached, photos decode off the UI thread, and large originals stream to private disk storage. Map colors, water, crop positions and edge-to-edge framing use the existing assets. Only the header controls receive status-bar clearance.
 
-Photos, metadata, and pending edits are stored in Android’s private application directory. Cloud backup is disabled. Generation guards cancel stale writes when signing out or changing computers. The app uses the platform WebView and standard Android APIs. The QR camera uses bundled JourneyApps ZXing Embedded 4.3.0 with ZXing Core 3.5.3 (Apache 2.0). Camera frames are decoded on the phone and are never uploaded or saved. Camera permission is requested only when you open the scanner. Pairing sends only the one-use token to the scanned computer; previous credentials are never sent there. The new session and computer address are committed only after a valid successful response.
+Album edits commit first to the existing private SQLite database and durable sync queue. Optional two-way sync uses the configured computer and its stable album ID. Existing albums, photo files and sessions migrate in place. HTTP computer connections remain limited to local IPv4 addresses; separately configured remote servers need HTTPS. Redirects and invalid certificates are rejected. Disconnecting keeps the device-owned album.
 
-References: [ZXing Android Embedded](https://github.com/journeyapps/zxing-android-embedded), [Android local web content](https://developer.android.com/develop/ui/views/layout/webapps/load-local-content), [Android Gradle compatibility](https://developer.android.com/build/releases/about-agp).
+Cloud backup is disabled. QR scanning uses bundled JourneyApps ZXing Embedded 4.3.0 with ZXing Core 3.5.3 (Apache 2.0); frames are decoded on the phone. Pairing sends only the one-use token and commits the connection after a successful, identity-checked response. Public image paste/drop uses a separate cookie-free downloader with DNS validation and private-network blocking. The website and Windows application remain supported separately.
+
+Run `npm run test:android` for an actual upgrade from the previous Java/WebView APK to Kotlin, standalone editing, original-photo retention, keyboard-free place selection, restart persistence and two-way sync. The suite uses only disposable emulator packages and temporary computer albums. `npm run test:orientation` checks native account rotation and header clearance. Widget and updater suites remain available below.
 
 ## In-app updates
 

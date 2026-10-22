@@ -24,7 +24,7 @@
     "test:design": "electron tests/design-review.cjs",
     "test:account": "electron tests/account-ui.cjs",
     "test:orientation": "node tests/orientation.mjs && node tests/android-orientation.mjs",
-    "test:android": "node tests/android-native.mjs",
+    "test:android": "node tests/kotlin-native.mjs",
     "test:desktop-updates": "node tests/desktop-updates.mjs && electron tests/desktop-updates-ui.cjs"
   },
   "dependencies": {
